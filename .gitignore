@@ -1,0 +1,4 @@
+# Lists files and directories (build artifacts, caches, secrets, CDK output) excluded from version control.
+.tmp/
+.env
+.env.example
