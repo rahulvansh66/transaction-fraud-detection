@@ -1,0 +1,19 @@
+# Dev-environment values: which tracking server / bucket / account this execution
+# talks to. Never put model hyperparameters here — see config/experiments/ and
+# config/production/ for those.
+mlflow:
+  tracking_uri: "https://dagshub.com/rahulvansh66/transaction-fraud-detection.mlflow"
+  experiment_name: "transaction-fraud-detection-dev"
+
+# IAM roles provisioned in the fraud-detection dev AWS account (184089714381,
+# us-east-1). These are reused as-is for this project; if they ever need to
+# change, update them via Terraform, not manually in the console.
+aws:
+  region: "us-east-1"
+  account_id: "184089714381"
+  # Owned by the legacy Terraform project; referenced (not managed) by infrastructure/s3.tf.
+  data_bucket: "fraud-detection-dev-data-use1"
+  iam_roles:
+    glue_preprocess_role_arn: "arn:aws:iam::184089714381:role/fraud-detection-dev-glue-preprocess"
+    sagemaker_execution_role_arn: "arn:aws:iam::184089714381:role/fraud-detection-dev-sagemaker-execution"
+    sagemaker_pipeline_role_arn: "arn:aws:iam::184089714381:role/fraud-detection-dev-sagemaker-pipeline"

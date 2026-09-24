@@ -1,0 +1,22 @@
+# Prod-environment values: which tracking server / bucket / account this execution
+# talks to. Never put model hyperparameters here — see config/experiments/ and
+# config/production/ for those.
+#
+# TODO: pointing at the same DagsHub repo/experiment namespace as dev for now.
+# Revisit once a separate prod tracking server or DagsHub project is provisioned.
+mlflow:
+  tracking_uri: "https://dagshub.com/rahulvansh66/transaction-fraud-detection.mlflow"
+  experiment_name: "transaction-fraud-detection-prod"
+
+# TODO: the roles below are the *-dev-* roles reused as a placeholder — only
+# a dev AWS account/role set exists so far. Provision separate prod roles via
+# Terraform once a prod AWS account is set up, then update these ARNs.
+aws:
+  region: "us-east-1"
+  account_id: "184089714381"
+  # Created by infrastructure/s3.tf (name = fraud-detection-<env>-<account_id>).
+  data_bucket: "fraud-detection-prod-184089714381"
+  iam_roles:
+    glue_preprocess_role_arn: "arn:aws:iam::184089714381:role/fraud-detection-dev-glue-preprocess"
+    sagemaker_execution_role_arn: "arn:aws:iam::184089714381:role/fraud-detection-dev-sagemaker-execution"
+    sagemaker_pipeline_role_arn: "arn:aws:iam::184089714381:role/fraud-detection-dev-sagemaker-pipeline"
