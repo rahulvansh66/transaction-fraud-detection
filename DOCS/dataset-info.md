@@ -89,7 +89,10 @@ isFlaggedFraud - The business model aims to control massive transfers from one a
 
 ### Relevance to this project
 - Goal is a working end-to-end pipeline, not SOTA metrics. A small, imbalance-aware model on `TRANSFER` + `CASH_OUT` with `type`, `amount` (logged), `step`-derived time features, and optional gated balance-error features is a reasonable v0.
-- The tiny hand-made `dataset/raw/data-v0.csv` (see `.tmp/data-v0-synthetic-notes.md`) intentionally uses an unrealistic ~20% fraud rate so both branches of the pipeline are exercised in tests; do not read anything into its statistics.
+- The tiny hand-made `dataset/raw-csv/data-v0.csv` (see `.tmp/data-v0-synthetic-notes.md`) intentionally uses an unrealistic ~20% fraud rate so both branches of the pipeline are exercised in tests; do not read anything into its statistics.
 
----
 
+
+
+
+   

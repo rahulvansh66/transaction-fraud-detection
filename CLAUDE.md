@@ -2,6 +2,14 @@ You are senior machine learning engineer, who knows best practice to build scala
 
 We are aiming for scalable and production grade sytem having huge training dataset(15GB+), the we are currently using while developing is purposely small to build and test this project working end to end, once we are done then we'll test on full dataset.
 
+## Infrastructure
+
+Terraform is the single source of truth for all AWS resources in this project
+(S3 buckets, IAM roles, SageMaker pipelines/endpoints, ECS/Lambda/Glue jobs,
+CloudWatch log groups, VPC/networking, etc.). Define and change infrastructure
+through Terraform config only — never create or modify AWS resources manually
+via the console, ad-hoc CLI commands, or one-off scripts.
+
 ## Code style
 
 Write code that is structured, modular, scalable, and maintainable. Use comments
@@ -34,6 +42,42 @@ Every module, class, and function/method must have a docstring. No exceptions fo
 - Use the `logging` module, not `print`, for anything that runs as part of a
   pipeline step (progress, warnings, errors). Reserve `print` for local,
   throwaway scripts only.
+
+### CloudWatch logging (follow always)
+
+All pipeline/production code ships logs to CloudWatch (via SageMaker, ECS,
+Lambda, or Glue log drivers). Write logs so they're actually usable once they
+land there.
+
+1. **Get a logger per module**, never configure the root logger from library
+   code: `logger = logging.getLogger(__name__)`. Only the entry point
+   (script/pipeline step's `main`) calls `logging.basicConfig(...)` or sets up
+   handlers.
+2. **Log levels matter.** `DEBUG` for verbose diagnostics, `INFO` for normal
+   progress (step start/end, record counts, artifact paths), `WARNING` for
+   recoverable issues, `ERROR` for failures, and use `logger.exception(...)`
+   inside `except` blocks so the traceback is captured. Never use `ERROR` for
+   expected control flow.
+3. **Structure log messages for querying.** CloudWatch Logs Insights parses
+   better with consistent key=value fields than free-form prose, e.g.
+   `logger.info("step=preprocess status=complete rows=%d duration_s=%.2f", n, dt)`
+   instead of `logger.info(f"Done! Processed {n} rows")`. Prefer `%s`-style
+   lazy formatting over f-strings in log calls so the string isn't built when
+   the level is disabled.
+4. **Include run/job identifiers** (SageMaker training job name, pipeline
+   execution ID, git commit hash) in log output near the start of a run so
+   logs can be correlated back to a specific execution — see
+   [[ml-lineage-reproducibility]] for what else must be logged for
+   traceability.
+5. **Never log secrets or PII.** No raw credentials, tokens, full card numbers,
+   or customer PII in log messages — mask or omit them. This applies
+   everywhere, but is especially critical for CloudWatch since log groups may
+   have broader read access than the originating service.
+6. **Respect log retention and volume.** Don't log full DataFrames, large
+   arrays, or per-row output in tight loops — log aggregates/samples instead.
+   Set explicit CloudWatch Logs retention (via the log group's IaC config, not
+   the default "Never expire") appropriate to the environment (short for dev,
+   longer for prod/audit trails).
 
 ### Jupyter notebooks
 

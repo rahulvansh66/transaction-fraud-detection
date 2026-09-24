@@ -1,4 +1,17 @@
 # Lists files and directories (build artifacts, caches, secrets, CDK output) excluded from version control.
 .tmp/
 .env
-.env.example
+.venv/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+
+# Local prototype outputs
+dataset/processed/
+
+# Python
+__pycache__/
+*.pyc

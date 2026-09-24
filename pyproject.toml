@@ -1,0 +1,27 @@
+[project]
+name = "transaction-fraud-detection"
+version = "0.1.0"
+description = "Scalable, production-grade fraud detection ML pipeline on AWS."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "boto3>=1.34",
+    "mlflow>=2.14",
+    "pandas>=2.2",
+    "pyarrow>=15",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.3.0",
+    "nbconvert>=7.17.1",
+]

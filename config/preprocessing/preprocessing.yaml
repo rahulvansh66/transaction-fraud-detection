@@ -1,0 +1,20 @@
+# Preprocessing / feature-engineering settings shared by the prototype notebook
+# and (later) the PySpark processor. Environment values (buckets, ARNs) live in
+# config/env/, not here.
+data:
+  input_path: "dataset/raw/data-v0"
+  output_dir: "dataset/processed/data-v0"
+  label_col: "isFraud"
+  keep_types: ["TRANSFER", "CASH_OUT"]
+
+features:
+  # Leaky post-transaction balance "error" features; PaySim artifact, keep off by default.
+  include_balance_error_features: false
+  night_hours: [0, 6]        # inclusive hour_of_day range flagged as night
+
+split:
+  # Time-based split on `step`: thresholds are fractions of the max step.
+  train_frac_of_max_step: 0.70
+  val_frac_of_max_step: 0.85
+
+seed: 42

@@ -1,6 +1,6 @@
 ---
 name: ml-experimentation-workflow
-description: Decides whether a new ML experiment should be a manual run, an AMT hyperparameter search, or production retraining, and how Git/Pipeline Parameters/AMT/MLflow/approval fit together. Use whenever writing or editing an experiment config under configs/experiments/, a SageMaker pipeline or AMT tuning step, or a GitHub Actions workflow that triggers a pipeline execution. Also use when deciding whether a promising manual result should become an HPO search space, whether an AMT winner is ready to promote, or whether a scheduled retrain needs to rerun HPO.
+description: Decides whether a new ML experiment should be a manual run, an AMT hyperparameter search, or production retraining, and how Git/Pipeline Parameters/AMT/MLflow/approval fit together. Use whenever writing or editing an experiment config under config/experiments/, a SageMaker pipeline or AMT tuning step, or a GitHub Actions workflow that triggers a pipeline execution. Also use when deciding whether a promising manual result should become an HPO search space, whether an AMT winner is ready to promote, or whether a scheduled retrain needs to rerun HPO.
 ---
 
 # ML experimentation workflow
@@ -25,7 +25,7 @@ final evaluation → MLflow Model Registry → approval → production.
 
 ## Deciding manual vs. HPO
 
-Use **manual** (a new `configs/experiments/experiment-NNN.yaml`, run via
+Use **manual** (a new `config/experiments/experiment-NNN.yaml`, run via
 Pipeline Parameters, no AMT) when the question is a deliberate, discrete
 comparison an engineer should reason about directly:
 
@@ -49,7 +49,7 @@ Stage 2 (AMT):    lr ∈ [.0003, .002], batch ∈ {32,64,128}, dropout ∈ [0,.2
 
 The responsibility split, always:
 
-- **Git** stores the search-space *definition* (the YAML under `configs/experiments/`).
+- **Git** stores the search-space *definition* (the YAML under `config/experiments/`).
 - **AMT** generates and evaluates the individual *trials* — never write trial
   values by hand into Git.
 - **Pipeline Parameters** carry runtime values (dataset version, experiment
@@ -78,7 +78,7 @@ gap — see [[ml-lineage-reproducibility]] for the `ConditionStep` pattern.
 ## Production retraining is not HPO
 
 Once a configuration is approved, write it explicitly to
-`configs/production/model.yaml` and retrain against *that*, on newly
+`config/production/model.yaml` and retrain against *that*, on newly
 approved data — don't rerun AMT on a schedule "just in case." HPO answers
 "what configuration should we use?"; production retraining answers "train
 the approved configuration on the latest approved data." Treat a request to
@@ -97,7 +97,7 @@ Git config change → GitHub Actions → SageMaker Pipeline execution
 ```
 
 If a workflow file starts containing hyperparameter values or search-space
-bounds directly, move them back into the relevant `configs/experiments/*.yaml`
+bounds directly, move them back into the relevant `config/experiments/*.yaml`
 and pass them through as parameters instead — see [[ml-repo-structure]] for
 why that separation matters.
 
