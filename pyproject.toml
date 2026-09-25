@@ -11,6 +11,8 @@ dependencies = [
     "pyarrow>=15",
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
+    "sagemaker-core>=2.23.0",
+    "sagemaker-mlops>=1.23.0",
 ]
 
 [build-system]
@@ -24,4 +26,7 @@ packages = ["src"]
 dev = [
     "ipykernel>=7.3.0",
     "nbconvert>=7.17.1",
+    "pyspark>=3.5,<3.6",
+    "pytest>=9.1.1",
 ]
+

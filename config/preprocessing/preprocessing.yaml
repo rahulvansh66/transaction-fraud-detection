@@ -18,3 +18,18 @@ split:
   val_frac_of_max_step: 0.85
 
 seed: 42
+
+# Settings for the SageMaker PySpark Processing job (job sizing only, no model hyperparameters).
+processing:
+  base_job_name: "fraud-preprocess"
+  spark_framework_version: "3.5"
+  sdk_staging_prefix: "processed/_sdk"   # where the SDK stages its script upload (role must read it)
+  instance_type: "ml.m5.xlarge"
+  instance_count: 1
+  volume_size_gb: 20                 # dev; raise for the full 15GB+ dataset (shuffle spill)
+  max_runtime_s: 3600                # cost guard
+  target_file_mb: 128                # desired parquet file size per split
+  spark_conf:
+    spark.sql.shuffle.partitions: "8"   # raise for the full dataset
+    spark.sql.adaptive.enabled: "true"
+    spark.sql.adaptive.skewJoin.enabled: "true"

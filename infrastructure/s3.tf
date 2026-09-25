@@ -35,7 +35,7 @@ resource "aws_s3_object" "prefix" {
 data "aws_iam_policy_document" "sagemaker_data_access" {
   statement {
     sid       = "ListDataBucket"
-    actions   = ["s3:ListBucket", "s3:GetBucketLocation"]
+    actions   = ["s3:ListBucket", "s3:GetBucketLocation", "s3:ListBucketMultipartUploads"]
     resources = [data.aws_s3_bucket.data.arn]
   }
 
@@ -46,8 +46,9 @@ data "aws_iam_policy_document" "sagemaker_data_access" {
   }
 
   statement {
-    sid     = "ReadWriteProcessedAndModels"
-    actions = ["s3:GetObject", "s3:PutObject"]
+    sid = "ReadWriteProcessedAndModels"
+    # Spark commits output by writing to a temp path then copy + delete (rename).
+    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"]
     resources = [
       "${data.aws_s3_bucket.data.arn}/processed/*",
       "${data.aws_s3_bucket.data.arn}/models/*",
