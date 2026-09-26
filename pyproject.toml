@@ -13,6 +13,8 @@ dependencies = [
     "pyyaml>=6.0",
     "sagemaker-core>=2.23.0",
     "sagemaker-mlops>=1.23.0",
+    "scikit-learn>=1.9.1",
+    "xgboost==1.7.6",
 ]
 
 [build-system]
@@ -28,5 +30,10 @@ dev = [
     "nbconvert>=7.17.1",
     "pyspark>=3.5,<3.6",
     "pytest>=9.1.1",
+    "ruff>=0.16.9",
 ]
 
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: end-to-end tests that run the full Spark job on local data"]

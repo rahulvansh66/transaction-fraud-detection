@@ -15,3 +15,5 @@ dataset/processed/
 # Python
 __pycache__/
 *.pyc
+
+model_out/

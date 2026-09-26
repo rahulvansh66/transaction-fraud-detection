@@ -1,0 +1,4 @@
+# Template: filled only after an AMT winner is approved (copy its values here).
+model:
+  approved_from_experiment: null
+static_params: {}

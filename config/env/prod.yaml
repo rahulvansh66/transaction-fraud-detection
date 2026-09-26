@@ -20,3 +20,9 @@ aws:
     glue_preprocess_role_arn: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/fraud-detection-dev-glue-preprocess"
     sagemaker_execution_role_arn: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/fraud-detection-dev-sagemaker-execution"
     sagemaker_pipeline_role_arn: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/fraud-detection-dev-sagemaker-pipeline"
+
+# Training-job sizing only; model settings live in config/production/.
+training:
+  instance_type: "ml.m5.2xlarge"
+  max_run: 7200
+  use_spot_instances: false

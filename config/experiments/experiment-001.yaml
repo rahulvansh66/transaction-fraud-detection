@@ -1,0 +1,31 @@
+# Experiment 001: tree structure. Modest ranges because we go straight to AMT
+# without prior manual runs. Environment values (buckets, ARNs) live in config/env/.
+experiment:
+  name: exp-001-tree-structure
+  mode: hpo
+data:
+  run_id: synthetic-v0    # immutable, explicit folder under processed/ (never "latest")
+static_params:
+  objective: binary:logistic
+  eval_metric: aucpr
+  tree_method: hist
+  eta: 0.1
+  num_round: 200
+  early_stopping_rounds: 20
+  seed: 42
+  min_precision: 0.9       # precision floor used to pick the decision threshold on validation
+# Fixed values used by `--kind manual`; AMT ignores this block.
+manual_params:
+  max_depth: 6
+  min_child_weight: 1
+  gamma: 0
+search_space:
+  max_depth:        {type: integer,    min: 3, max: 10}
+  min_child_weight: {type: continuous, min: 1, max: 10}
+  gamma:            {type: continuous, min: 0, max: 5}
+tuning:
+  objective_metric: validation:aucpr
+  objective_type: Maximize
+  strategy: Bayesian
+  max_jobs: 3              # small on purpose while we validate 001 end to end
+  max_parallel_jobs: 2

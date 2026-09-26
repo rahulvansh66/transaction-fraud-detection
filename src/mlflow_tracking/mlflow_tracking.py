@@ -67,3 +67,44 @@ def configure_mlflow_tracking(
         mlflow_cfg["experiment_name"],
     )
     return mlflow_cfg["experiment_name"]
+
+
+def set_lineage_tags(
+    git_sha: str, config_hash: str, data_run_id: str, mode: str, **extra: str
+) -> None:
+    """Tags the active MLflow run with the identifiers needed to reproduce it.
+
+    Args:
+        git_sha: Commit the run was launched from (with a dirty suffix if applicable).
+        config_hash: Hash of the resolved experiment config.
+        data_run_id: Immutable processed run id the run read.
+        mode: One of manual, hpo, production.
+        **extra: Additional string tags (e.g. image URI, pipeline execution ARN).
+    """
+    mlflow.set_tags(
+        {"git_sha": git_sha, "config_hash": config_hash, "data_run_id": data_run_id,
+         "mode": mode, **extra}
+    )
+
+
+def fetch_dagshub_secret(secret_id: str, region: str = "us-east-1") -> None:
+    """Loads DagsHub MLflow credentials from Secrets Manager into the process environment.
+
+    Used on SageMaker, where no .env exists. The secret must be JSON with
+    ``username`` and ``token``. The values are never logged.
+
+    Args:
+        secret_id: Secrets Manager id, e.g. fraud-detection/dev/dagshub-mlflow.
+        region: AWS region of the secret.
+    """
+    import json
+
+    import boto3
+
+    payload = boto3.client("secretsmanager", region_name=region).get_secret_value(
+        SecretId=secret_id
+    )["SecretString"]
+    secret = json.loads(payload)
+    os.environ["MLFLOW_TRACKING_USERNAME"] = secret["username"]
+    os.environ["MLFLOW_TRACKING_PASSWORD"] = secret["token"]
+    logger.info("step=secrets status=loaded secret_id=%s", secret_id)

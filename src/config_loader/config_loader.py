@@ -38,3 +38,41 @@ def load_env_config(env: str, config_dir: str | Path = "config/env") -> dict[str
 
     with config_path.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def load_yaml(path: str | Path) -> dict[str, Any]:
+    """Loads any YAML file (e.g. an experiment config) into a dictionary.
+
+    Args:
+        path: Path to the YAML file.
+
+    Returns:
+        The parsed YAML content.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"No config file found at {path}.")
+    with path.open("r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def merge_configs(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merges ``override`` into ``base`` and returns a new dict.
+
+    Args:
+        base: Base configuration; not mutated.
+        override: Values that win over ``base``; nested dicts are merged key by key.
+
+    Returns:
+        A new merged dictionary.
+    """
+    out = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = merge_configs(out[key], value)
+        else:
+            out[key] = value
+    return out
