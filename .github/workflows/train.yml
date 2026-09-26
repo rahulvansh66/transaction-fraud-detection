@@ -1,0 +1,58 @@
+name: train
+# Hyperparameters live in config/experiments/*.yaml and config/production/model.yaml,
+# never here. This workflow only passes which config and which immutable data run to use.
+on:
+  workflow_dispatch:
+    inputs:
+      experiment:
+        description: "config/experiments file (hpo) or baseline for production"
+        required: true
+      data_run_id:
+        description: "immutable processed/<run_id> (never 'latest')"
+        required: true
+      kind:
+        type: choice
+        options: [hpo, production]
+        default: hpo
+  schedule:
+    - cron: "0 3 * * 1" # weekly retrain of the approved config, production kind only
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  KIND: ${{ inputs.kind || 'production' }}
+  EXPERIMENT: ${{ inputs.experiment || 'config/experiments/experiment-001.yaml' }}
+  DATA_RUN_ID: ${{ inputs.data_run_id || vars.PRODUCTION_DATA_RUN_ID }}
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - run: uv sync
+      - name: Load MLflow credentials
+        run: |
+          secret=$(aws secretsmanager get-secret-value --secret-id fraud-detection/dev/dagshub-mlflow --query SecretString --output text)
+          echo "::add-mask::$(echo "$secret" | jq -r .MLFLOW_TRACKING_PASSWORD)"
+          echo "MLFLOW_TRACKING_USERNAME=$(echo "$secret" | jq -r .MLFLOW_TRACKING_USERNAME)" >> "$GITHUB_ENV"
+          echo "MLFLOW_TRACKING_PASSWORD=$(echo "$secret" | jq -r .MLFLOW_TRACKING_PASSWORD)" >> "$GITHUB_ENV"
+      - name: Train
+        run: |
+          uv run python -m src.training.run_training_job --mode sagemaker \
+            --kind "$KIND" --experiment "$EXPERIMENT" --data-run-id "$DATA_RUN_ID" \
+            --output-json run.json
+      - name: Select winner (hpo only)
+        if: env.KIND == 'hpo'
+        run: |
+          uv run python -m src.evaluation.select_winner \
+            --parent-run-id "$(jq -r .parent_run_id run.json)" --output-json run.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Evaluate on test, gate and register
+        run: uv run python -m src.evaluation.evaluate --run-id "$(jq -r .run_id run.json)"

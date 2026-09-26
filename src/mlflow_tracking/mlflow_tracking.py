@@ -91,11 +91,15 @@ def fetch_dagshub_secret(secret_id: str, region: str = "us-east-1") -> None:
     """Loads DagsHub MLflow credentials from Secrets Manager into the process environment.
 
     Used on SageMaker, where no .env exists. The secret must be JSON with
-    ``username`` and ``token``. The values are never logged.
+    ``MLFLOW_TRACKING_USERNAME`` and ``MLFLOW_TRACKING_PASSWORD`` (the shape written by
+    ``infrastructure/dagshub_secret.tf``). The values are never logged.
 
     Args:
         secret_id: Secrets Manager id, e.g. fraud-detection/dev/dagshub-mlflow.
         region: AWS region of the secret.
+
+    Raises:
+        KeyError: If the secret lacks either credential key.
     """
     import json
 
@@ -105,6 +109,6 @@ def fetch_dagshub_secret(secret_id: str, region: str = "us-east-1") -> None:
         SecretId=secret_id
     )["SecretString"]
     secret = json.loads(payload)
-    os.environ["MLFLOW_TRACKING_USERNAME"] = secret["username"]
-    os.environ["MLFLOW_TRACKING_PASSWORD"] = secret["token"]
+    for var in _REQUIRED_ENV_VARS:
+        os.environ[var] = secret[var]
     logger.info("step=secrets status=loaded secret_id=%s", secret_id)

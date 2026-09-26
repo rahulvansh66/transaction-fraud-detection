@@ -115,6 +115,7 @@ def log_run(
     resolved: dict[str, Any],
     metrics: dict[str, float],
     features: list[str],
+    label: str,
     x_val: Any,
     val_scores: Any,
     args: argparse.Namespace,
@@ -129,6 +130,7 @@ def log_run(
         resolved: Resolved config (static + hyperparameters + control values) for the artifact.
         metrics: Metrics to log (already prefixed).
         features: Ordered feature names.
+        label: Label column name.
         x_val: Validation features (for the model input example).
         val_scores: Validation predictions (for the model signature).
         args: Control arguments.
@@ -160,7 +162,7 @@ def log_run(
         context="validation",
     )
     mlflow.log_dict(resolved, "resolved_config.json")
-    mlflow.log_dict({"features": features}, "features.json")
+    mlflow.log_dict({"features": features, "label": label}, "features.json")
     mlflow.log_text(pip_freeze(), "pip_freeze.txt")
     mlflow.xgboost.log_model(
         booster,
@@ -221,8 +223,8 @@ def main(argv: list[str] | None = None) -> None:
     resolved = {**hp, "scale_pos_weight": params["scale_pos_weight"], "features": features}
     parent = os.environ.get(PARENT_RUN_ENV)
     with mlflow.start_run(run_name=job_name, parent_run_id=parent, nested=bool(parent)):
-        run_id = log_run(booster, params, resolved, metrics, features, x_val, val_scores,
-                         args, train_dir, job_name)
+        run_id = log_run(booster, params, resolved, metrics, features, label, x_val,
+                         val_scores, args, train_dir, job_name)
 
     out = Path(model_dir)
     out.mkdir(parents=True, exist_ok=True)

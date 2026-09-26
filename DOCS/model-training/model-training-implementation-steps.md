@@ -270,7 +270,7 @@ Log at the start of the run: job name, git SHA, data run_id, e.g. `logger.info("
 ```bash
 # 1. make small splits with the existing local Spark job
 # 2. train
-uv run python src/training/run_training_job.py \
+uv run python -m src.training.run_training_job \
   --mode local --kind manual --experiment config/experiments/experiment-001.yaml
 ```
 
@@ -286,7 +286,7 @@ Check in DagsHub: the run exists, `mode=manual`, git SHA and config hash tags ar
 
 **Concept:** Terraform is the source of truth. You write `.tf`, run `plan` to see what would change, and `apply` only after review and approval.
 
-**Files under `infra/terraform/`:**
+**Files under `infrastructure/`:**
 - `cloudwatch.tf`: log group `/aws/sagemaker/TrainingJobs` with explicit `retention_in_days` (short for dev). Extend the execution role's log permissions.
 - `training.tf`: execution-role permissions for `sagemaker:CreateTrainingJob`, `*HyperParameterTuningJob*`, scoped `iam:PassRole`, and S3 access to `models/*`.
 - `github_oidc.tf`: OIDC provider plus a role that only this repo can assume.
@@ -437,7 +437,7 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run pytest tests/unit
-      - run: terraform -chdir=infra/terraform fmt -check && terraform -chdir=infra/terraform validate
+      - run: terraform -chdir=infrastructure fmt -check && terraform -chdir=infrastructure validate
 ```
 
 **`train.yml`** (manual button plus schedule):
@@ -463,11 +463,11 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
       - run: uv sync
       - run: |
-          uv run python src/training/run_training_job.py --mode sagemaker \
+          uv run python -m src.training.run_training_job --mode sagemaker \
             --kind ${{ inputs.kind || 'production' }} \
             --experiment ${{ inputs.experiment }} --data-run-id ${{ inputs.data_run_id }}
-      - run: uv run python src/evaluation/select_winner.py >> $GITHUB_STEP_SUMMARY
-      - run: uv run python src/evaluation/evaluate.py
+      - run: uv run python -m src.evaluation.select_winner >> $GITHUB_STEP_SUMMARY
+      - run: uv run python -m src.evaluation.evaluate
 ```
 
 Notes:
@@ -501,6 +501,8 @@ Notes:
 - **Per-row logging** in loops. Log aggregates.
 
 ### Open items
-- MLflow Model Registry vs SageMaker Model Package Group (default: MLflow).
+- Registry decided: MLflow Model Registry (`config/evaluation/gate.yaml`, model `fraud-detector`, promotion via the `production` alias, manual).
+- Implementation notes: SageMaker SDK v3 has no `XGBoost` estimator, so `sagemaker_jobs.py`/`hpo_tuner.py` call boto3 (`create_training_job`, `create_hyper_parameter_tuning_job`). Gate thresholds are placeholders until real data exists.
+- Unverified on AWS: container Python version vs. the code's 3.10+ syntax, `metadata.json` as an S3Prefix channel, and image digest capture (only the tag URI is recorded).
 - Prod bucket and role ARNs are placeholders.
 - Stale `tests/preprocessing/*` entries in the git index are left alone.

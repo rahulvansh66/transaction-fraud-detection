@@ -9,6 +9,7 @@ Run from the repository root: ``python -m src.training.run_training_job``.
 """
 
 import argparse
+import json
 import logging
 import os
 import subprocess
@@ -36,7 +37,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         argv: Argument list. Defaults to ``sys.argv[1:]``.
 
     Returns:
-        Namespace with mode, kind, experiment, env, data_dir, data_run_id, allow_dirty and no_wait.
+        Namespace with mode, kind, experiment, env, data_dir, data_run_id, allow_dirty, no_wait and output_json.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["local", "sagemaker"], default="local")
@@ -50,6 +51,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--allow-dirty", action="store_true",
                         help="Permit a dirty git tree for SageMaker runs (smoke tests only).")
     parser.add_argument("--no-wait", action="store_true", help="Submit and return immediately.")
+    parser.add_argument("--output-json", type=Path, default=None,
+                        help="Write {run_id} (manual/production) or {parent_run_id} (hpo) for later steps.")
     return parser.parse_args(argv)
 
 
@@ -158,6 +161,36 @@ def run_local(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: str, g
     subprocess.run([sys.executable, "-m", TRAIN_SCRIPT, *train_args], cwd=REPO_ROOT, check=True, env=env)
 
 
+def wait_for_tuning(client: Any, name: str, poll_s: int = 60) -> str:
+    """Polls an AMT job until it reaches a terminal state.
+
+    Args:
+        client: A boto3 SageMaker client.
+        name: Tuning job name.
+        poll_s: Seconds between polls.
+
+    Returns:
+        The terminal ``HyperParameterTuningJobStatus``.
+    """
+    while True:
+        status = client.describe_hyper_parameter_tuning_job(
+            HyperParameterTuningJobName=name)["HyperParameterTuningJobStatus"]
+        if status in ("Completed", "Failed", "Stopped"):
+            return status
+        time.sleep(poll_s)
+
+
+def write_output(path: Path | None, payload: dict[str, Any]) -> None:
+    """Writes run identifiers for downstream workflow steps.
+
+    Args:
+        path: Output file, or ``None`` to skip.
+        payload: JSON-serialisable identifiers.
+    """
+    if path:
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+
 def run_sagemaker(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: str, git_sha: str) -> None:
     """Submits a SageMaker training job or an AMT tuning job.
 
@@ -213,6 +246,12 @@ def run_sagemaker(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: st
                 **hpo_tuner.build_tuning_request(tuning_name, cfg, request, parent.info.run_id))
             logger.info("step=launch status=submitted kind=hpo tuning_job=%s parent_run_id=%s",
                         tuning_name, parent.info.run_id)
+        if not args.no_wait:
+            status = wait_for_tuning(client, tuning_name)
+            logger.info("step=launch status=finished tuning_job=%s job_status=%s", tuning_name, status)
+            if status != "Completed":
+                raise SystemExit(f"tuning job {tuning_name} ended with status {status}")
+        write_output(args.output_json, {"parent_run_id": parent.info.run_id})
         return
 
     client.create_training_job(**request)
@@ -221,6 +260,11 @@ def run_sagemaker(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: st
         client.get_waiter("training_job_completed_or_stopped").wait(TrainingJobName=name)
         status = client.describe_training_job(TrainingJobName=name)["TrainingJobStatus"]
         logger.info("step=launch status=finished training_job=%s job_status=%s", name, status)
+        if status != "Completed":
+            raise SystemExit(f"training job {name} ended with status {status}")
+        configure_mlflow_tracking(args.env)
+        runs = mlflow.search_runs(filter_string=f"tags.job_name = '{name}'", max_results=1)
+        write_output(args.output_json, {"run_id": runs.iloc[0].run_id if len(runs) else None})
 
 
 def main(argv: list[str] | None = None) -> None:

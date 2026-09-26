@@ -52,3 +52,23 @@ resource "aws_iam_role_policy" "sagemaker_processing_runtime" {
   role   = var.sagemaker_execution_role_name
   policy = data.aws_iam_policy_document.sagemaker_processing_runtime.json
 }
+
+###############################################################################
+# SageMaker Training and AMT job logs
+###############################################################################
+
+variable "training_log_retention_days" {
+  description = "Retention in days for the SageMaker Training job log group."
+  type        = number
+  default     = 14
+}
+
+resource "aws_cloudwatch_log_group" "training_jobs" {
+  name              = "/aws/sagemaker/TrainingJobs"
+  retention_in_days = var.training_log_retention_days
+
+  tags = {
+    project     = "transaction-fraud-detection"
+    environment = var.environment
+  }
+}
