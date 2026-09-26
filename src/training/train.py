@@ -72,11 +72,27 @@ def parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, dict[
     parser.add_argument("--config-hash", default="unknown")
     parser.add_argument("--data-run-id", default="unknown")
     parser.add_argument("--experiment-name", default=None, help="MLflow run name prefix.")
+    parser.add_argument("--expected-xgboost-version", default=None,
+                        help="Fail fast if the installed XGBoost differs (local vs container drift).")
     args, unknown = parser.parse_known_args(argv)
     hyperparameters: dict[str, Any] = {}
     for i in range(0, len(unknown) - 1, 2):
         hyperparameters[unknown[i].lstrip("-").replace("-", "_")] = coerce(unknown[i + 1].strip('"'))
     return args, hyperparameters
+
+
+def check_xgboost_version(expected: str | None) -> None:
+    """Fails fast when the installed XGBoost differs from the pinned version.
+
+    Args:
+        expected: Version required by the experiment config, or ``None`` to skip the check.
+
+    Raises:
+        RuntimeError: If the installed version does not match, since metrics would not
+            be reproducible across environments.
+    """
+    if expected and xgb.__version__ != expected:
+        raise RuntimeError(f"XGBoost version mismatch: installed={xgb.__version__} expected={expected}")
 
 
 def pip_freeze() -> str:
@@ -163,9 +179,11 @@ def main(argv: list[str] | None = None) -> None:
 
     Raises:
         FileNotFoundError: If the data or metadata files are missing.
+        RuntimeError: If the installed XGBoost differs from the pinned version.
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     args, hp = parse_args(argv)
+    check_xgboost_version(args.expected_xgboost_version)
     start = time.time()
     train_dir = os.environ.get("SM_CHANNEL_TRAIN", args.train_dir)
     val_dir = os.environ.get("SM_CHANNEL_VAL", args.val_dir)
@@ -174,7 +192,7 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("step=train status=start job=%s git_sha=%s data_run_id=%s mode=%s",
                 job_name, args.git_sha, args.data_run_id, args.mode)
 
-    meta = read_metadata(train_dir)
+    meta = read_metadata(os.environ.get("SM_CHANNEL_META", train_dir))
     features, label = meta["features"], meta["label"]
     x_train, y_train = load_split(train_dir, features, label)
     x_val, y_val = load_split(val_dir, features, label)

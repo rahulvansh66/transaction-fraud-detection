@@ -5,6 +5,9 @@ experiment:
   mode: hpo
 data:
   run_id: synthetic-v0    # immutable, explicit folder under processed/ (never "latest")
+runtime:
+  xgboost_version: "1.7.6"          # must equal the container's XGBoost; train.py fails on mismatch
+  sagemaker_framework_version: "1.7-1"
 static_params:
   objective: binary:logistic
   eval_metric: aucpr

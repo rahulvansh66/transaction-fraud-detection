@@ -6,7 +6,7 @@ config and a versioned deps zip (``features.py`` + ``lineage.py``) under the run
 prefix, and submits ``spark_job.py`` to a SageMaker Spark container. The job itself
 reads/writes S3 directly and writes ``processed/<run_id>/{train,val,test}``.
 
-Run from the repository root: ``python -m src.preprocessing.run_sagemaker_preprocessing_job``.
+Run from the repository root: ``python -m src.preprocessing.run_preprocessing_job``.
 """
 
 import argparse

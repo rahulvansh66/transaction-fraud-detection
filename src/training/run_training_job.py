@@ -1,7 +1,9 @@
-"""Client-side launcher for training. ``--mode local`` runs ``train.py`` as a subprocess.
+"""Client-side launcher for training: local subprocess, one SageMaker job, or an AMT search.
 
-Contains no ML logic: it resolves the experiment config, derives lineage identifiers
-and builds the argument list. ``--mode sagemaker`` is implemented in a later step.
+Contains no ML logic: it resolves the experiment config, derives lineage identifiers and
+submits the work. ``--mode local`` runs ``train.py`` as a subprocess; ``--mode sagemaker``
+submits a training job (``--kind manual|production``) or a tuning job (``--kind hpo``).
+``--kind production`` reads ``config/production/model.yaml`` and never runs AMT.
 
 Run from the repository root: ``python -m src.training.run_training_job``.
 """
@@ -11,16 +13,20 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
-from src.config_loader.config_loader import load_yaml
+from src.config_loader.config_loader import load_env_config, load_yaml, merge_configs
 from src.training.lineage import config_hash, current_git_sha
+from src.training.sagemaker_jobs import validate_data_run_id
 
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TRAIN_SCRIPT = "src.training.train"
+PRODUCTION_CONFIG = REPO_ROOT / "config" / "production" / "model.yaml"
+SOURCE_PREFIX = "models/code/"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -30,25 +36,89 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         argv: Argument list. Defaults to ``sys.argv[1:]``.
 
     Returns:
-        Namespace with mode, kind, experiment, env, data_dir and data_run_id.
+        Namespace with mode, kind, experiment, env, data_dir, data_run_id, allow_dirty and no_wait.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["local", "sagemaker"], default="local")
     parser.add_argument("--kind", choices=["manual", "hpo", "production"], default="manual")
-    parser.add_argument("--experiment", type=Path, required=True)
+    parser.add_argument("--experiment", type=Path, default=None,
+                        help="Experiment YAML; ignored for --kind production.")
     parser.add_argument("--env", default="dev")
-    parser.add_argument("--data-run-id", default=None, help="Overrides data.run_id from the experiment.")
+    parser.add_argument("--data-run-id", default=None, help="Overrides data.run_id from the config.")
     parser.add_argument("--data-dir", type=Path, default=None,
                         help="Local processed root; defaults to dataset/processed/<run_id>.")
+    parser.add_argument("--allow-dirty", action="store_true",
+                        help="Permit a dirty git tree for SageMaker runs (smoke tests only).")
+    parser.add_argument("--no-wait", action="store_true", help="Submit and return immediately.")
     return parser.parse_args(argv)
+
+
+def resolve_config(kind: str, experiment: Path | None) -> dict[str, Any]:
+    """Loads the config that defines this run.
+
+    Args:
+        kind: ``manual``, ``hpo`` or ``production``.
+        experiment: Experiment YAML path (required unless ``kind == "production"``).
+
+    Returns:
+        Parsed config. For ``production`` the approved ``config/production/model.yaml``
+        is layered over the ``data``/``runtime`` defaults of the experiment if given.
+
+    Raises:
+        SystemExit: If no experiment is given for a non-production kind.
+    """
+    if kind == "production":
+        base = load_yaml(experiment) if experiment else {}
+        return merge_configs(base, load_yaml(PRODUCTION_CONFIG))
+    if experiment is None:
+        raise SystemExit("--experiment is required for --kind manual and hpo.")
+    return load_yaml(experiment)
+
+
+def build_hyperparameters(cfg: dict[str, Any], kind: str) -> dict[str, Any]:
+    """Selects the hyperparameters passed to ``train.py``.
+
+    Args:
+        cfg: Parsed config.
+        kind: ``manual``, ``hpo`` or ``production``.
+
+    Returns:
+        Static params, plus ``manual_params`` for manual/production runs. HPO passes only
+        static params because AMT generates the tunable values.
+    """
+    hp = dict(cfg.get("static_params", {}))
+    if kind != "hpo":
+        hp.update(cfg.get("manual_params", {}))
+    return hp
+
+
+def build_control_args(cfg: dict[str, Any], kind: str, env: str, git_sha: str, data_run_id: str) -> dict[str, str]:
+    """Builds the non-hyperparameter arguments ``train.py`` expects.
+
+    Args:
+        cfg: Parsed config.
+        kind: ``manual``, ``hpo`` or ``production``.
+        env: Environment name.
+        git_sha: Code version to tag.
+        data_run_id: Immutable data run identifier.
+
+    Returns:
+        Mapping of CLI option (without ``--``) to value.
+    """
+    control = {"env": env, "mode": kind, "git-sha": git_sha, "data-run-id": data_run_id,
+               "config-hash": config_hash(cfg)}
+    version = cfg.get("runtime", {}).get("xgboost_version")
+    if version:
+        control["expected-xgboost-version"] = version
+    return control
 
 
 def build_train_args(cfg: dict[str, Any], kind: str, data_dir: Path, data_run_id: str,
                      env: str, git_sha: str) -> list[str]:
-    """Builds the ``train.py`` argument list from the experiment config.
+    """Builds the ``train.py`` argument list for a local run.
 
     Args:
-        cfg: Parsed experiment config.
+        cfg: Parsed config.
         kind: ``manual``, ``hpo`` or ``production``.
         data_dir: Directory holding ``train/``, ``val/`` and ``metadata.json``.
         data_run_id: Immutable data run identifier.
@@ -58,43 +128,123 @@ def build_train_args(cfg: dict[str, Any], kind: str, data_dir: Path, data_run_id
     Returns:
         CLI arguments for ``train.py``.
     """
-    hp = {**cfg["static_params"], **cfg.get("manual_params", {})}
-    args = [
-        "--train-dir", str(data_dir / "train"), "--val-dir", str(data_dir / "val"),
-        "--env", env, "--mode", kind, "--git-sha", git_sha, "--data-run-id", data_run_id,
-        "--config-hash", config_hash(cfg),
-    ]
-    for key, value in hp.items():
+    args = ["--train-dir", str(data_dir / "train"), "--val-dir", str(data_dir / "val")]
+    for key, value in build_control_args(cfg, kind, env, git_sha, data_run_id).items():
+        args += [f"--{key}", value]
+    for key, value in build_hyperparameters(cfg, kind).items():
         args += [f"--{key}", str(value)]
     return args
 
 
+def run_local(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: str, git_sha: str) -> None:
+    """Runs ``train.py`` as a subprocess on local Parquet splits.
+
+    Args:
+        cfg: Parsed config.
+        args: Launcher arguments.
+        data_run_id: Immutable data run identifier.
+        git_sha: Code version to tag.
+
+    Raises:
+        FileNotFoundError: If the processed data directory does not exist.
+        subprocess.CalledProcessError: If the training subprocess fails.
+    """
+    data_dir = args.data_dir or REPO_ROOT / "dataset" / "processed" / data_run_id
+    if not data_dir.is_dir():
+        raise FileNotFoundError(f"processed data not found: {data_dir}")
+    train_args = build_train_args(cfg, args.kind, data_dir, data_run_id, args.env, git_sha)
+    # MLflow prints an emoji on run end, which crashes cp1252 consoles on Windows
+    env = {**os.environ, "PYTHONUTF8": "1"}
+    subprocess.run([sys.executable, "-m", TRAIN_SCRIPT, *train_args], cwd=REPO_ROOT, check=True, env=env)
+
+
+def run_sagemaker(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: str, git_sha: str) -> None:
+    """Submits a SageMaker training job or an AMT tuning job.
+
+    Args:
+        cfg: Parsed config.
+        args: Launcher arguments.
+        data_run_id: Immutable data run identifier.
+        git_sha: Code version to tag (must be clean unless ``--allow-dirty``).
+
+    Raises:
+        SystemExit: If the git tree is dirty without ``--allow-dirty``.
+        KeyError: If the env config lacks ``training.max_run`` or ``training.instance_type``.
+    """
+    import boto3
+    import mlflow
+    from sagemaker.core import image_uris
+
+    from src.mlflow_tracking.mlflow_tracking import configure_mlflow_tracking
+    from src.training import hpo_tuner, sagemaker_jobs
+
+    if "dirty" in git_sha and not args.allow_dirty:
+        raise SystemExit("Refusing to launch on SageMaker with a dirty git tree; commit or pass --allow-dirty.")
+
+    env_cfg = load_env_config(args.env, config_dir=REPO_ROOT / "config" / "env")
+    region, bucket = env_cfg["aws"]["region"], env_cfg["aws"]["data_bucket"]
+    session = boto3.Session(region_name=region)
+    image_uri = image_uris.retrieve("xgboost", region=region, version=cfg["runtime"]["sagemaker_framework_version"])
+
+    source_uri = sagemaker_jobs.stage_source(session.client("s3"), bucket, SOURCE_PREFIX,
+                                             sagemaker_jobs.build_source_tar())
+    hp = {**build_hyperparameters(cfg, args.kind), **build_control_args(cfg, args.kind, args.env, git_sha, data_run_id)}
+    stamp = time.strftime("%m%d%H%M%S")
+    name = f"fraud-{args.kind}-{config_hash(cfg)[:8]}-{stamp}"
+    environment = {"TRAINING_IMAGE_URI": image_uri, "TRAINING_JOB_NAME": name,
+                   "DAGSHUB_SECRET_ID": f"fraud-detection/{args.env}/dagshub-mlflow"}
+    request = sagemaker_jobs.build_training_job_request(
+        job_name=name, image_uri=image_uri,
+        role_arn=env_cfg["aws"]["iam_roles"]["sagemaker_execution_role_arn"],
+        training=env_cfg["training"],
+        hyperparameters=sagemaker_jobs.script_mode_hyperparameters(source_uri, region, hp),
+        channels=sagemaker_jobs.data_channels(bucket, data_run_id),
+        output_uri=f"s3://{bucket}/models/{name}/", environment=environment,
+    )
+    client = session.client("sagemaker")
+
+    if args.kind == "hpo":
+        configure_mlflow_tracking(args.env)
+        tuning_name = hpo_tuner.tuning_job_name(config_hash(cfg), stamp)
+        with mlflow.start_run(run_name=tuning_name) as parent:
+            mlflow.set_tags({"mode": "hpo", "git_sha": git_sha, "config_hash": config_hash(cfg),
+                             "data_run_id": data_run_id, "tuning_job_name": tuning_name})
+            client.create_hyper_parameter_tuning_job(
+                **hpo_tuner.build_tuning_request(tuning_name, cfg, request, parent.info.run_id))
+            logger.info("step=launch status=submitted kind=hpo tuning_job=%s parent_run_id=%s",
+                        tuning_name, parent.info.run_id)
+        return
+
+    client.create_training_job(**request)
+    logger.info("step=launch status=submitted kind=%s training_job=%s image=%s", args.kind, name, image_uri)
+    if not args.no_wait:
+        client.get_waiter("training_job_completed_or_stopped").wait(TrainingJobName=name)
+        status = client.describe_training_job(TrainingJobName=name)["TrainingJobStatus"]
+        logger.info("step=launch status=finished training_job=%s job_status=%s", name, status)
+
+
 def main(argv: list[str] | None = None) -> None:
-    """Resolves the experiment and launches training.
+    """Resolves the config and launches training locally or on SageMaker.
 
     Args:
         argv: Argument list. Defaults to ``sys.argv[1:]``.
 
     Raises:
-        NotImplementedError: For ``--mode sagemaker`` until step 9.
-        subprocess.CalledProcessError: If the training subprocess fails.
+        ValueError: If the data run id is empty or a moving alias like ``latest``.
+        SystemExit: On invalid argument combinations or a dirty tree for SageMaker.
+        subprocess.CalledProcessError: If the local training subprocess fails.
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     args = parse_args(argv)
-    if args.mode != "local":
-        raise NotImplementedError("SageMaker mode is implemented in step 9.")
-
-    cfg = load_yaml(args.experiment)
-    data_run_id = args.data_run_id or cfg["data"]["run_id"]
-    data_dir = args.data_dir or REPO_ROOT / "dataset" / "processed" / data_run_id
+    cfg = resolve_config(args.kind, args.experiment)
+    data_run_id = validate_data_run_id(args.data_run_id or cfg["data"]["run_id"])
     git_sha = current_git_sha()
-    logger.info("step=launch status=start mode=local kind=%s experiment=%s data_run_id=%s git_sha=%s",
-                args.kind, cfg["experiment"]["name"], data_run_id, git_sha)
-
-    train_args = build_train_args(cfg, args.kind, data_dir, data_run_id, args.env, git_sha)
-    # MLflow prints an emoji on run end, which crashes cp1252 consoles on Windows
-    env = {**os.environ, "PYTHONUTF8": "1"}
-    subprocess.run([sys.executable, "-m", TRAIN_SCRIPT, *train_args], cwd=REPO_ROOT, check=True, env=env)
+    logger.info("step=launch status=start mode=%s kind=%s data_run_id=%s git_sha=%s",
+                args.mode, args.kind, data_run_id, git_sha)
+    if args.mode == "local":
+        run_local(cfg, args, data_run_id, git_sha)
+    else:
+        run_sagemaker(cfg, args, data_run_id, git_sha)
 
 
 if __name__ == "__main__":
