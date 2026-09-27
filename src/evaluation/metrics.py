@@ -4,8 +4,11 @@ Used by both training (validation) and evaluation (test) so "good" has a single
 definition. Imports only numpy and scikit-learn to keep the training image light.
 """
 
+from __future__ import annotations
+
 import numpy as np
 from sklearn.metrics import (
+    accuracy_score,
     average_precision_score,
     f1_score,
     precision_recall_curve,
@@ -20,7 +23,7 @@ DEFAULT_THRESHOLD = 0.5
 def compute_metrics(
     y_true: np.ndarray, y_score: np.ndarray, threshold: float
 ) -> dict[str, float]:
-    """Computes AUPRC, ROC-AUC and precision/recall/F1 at a threshold.
+    """Computes AUPRC, ROC-AUC and accuracy/precision/recall/F1 at a threshold.
 
     Ranking metrics are NaN when ``y_true`` holds a single class (they are undefined).
 
@@ -38,6 +41,7 @@ def compute_metrics(
     return {
         "aucpr": float("nan") if single_class else float(average_precision_score(y_true, y_score)),
         "roc_auc": float("nan") if single_class else float(roc_auc_score(y_true, y_score)),
+        "accuracy": float(accuracy_score(y_true, y_pred)),
         "precision": float(precision_score(y_true, y_pred, zero_division=0)),
         "recall": float(recall_score(y_true, y_pred, zero_division=0)),
         "f1": float(f1_score(y_true, y_pred, zero_division=0)),

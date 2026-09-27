@@ -4,6 +4,8 @@ Reuses the preprocessing hash logic so preprocessing and training compute identi
 identifiers. Used by the launcher and ``train.py`` to tag every MLflow run.
 """
 
+from __future__ import annotations
+
 import hashlib
 import subprocess
 from pathlib import Path

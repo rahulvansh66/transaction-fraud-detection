@@ -6,6 +6,8 @@ single place that logic lives, so steps don't each reimplement file
 resolution and parsing.
 """
 
+from __future__ import annotations
+
 import logging
 from pathlib import Path
 from typing import Any

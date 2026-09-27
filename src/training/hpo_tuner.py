@@ -5,6 +5,8 @@ hardcoded. One MLflow parent run represents the whole search; each trial's ``tra
 opens a child run under it (the parent id reaches the trial via ``MLFLOW_PARENT_RUN_ID``).
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Any
 

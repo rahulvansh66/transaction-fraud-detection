@@ -6,6 +6,8 @@ Registry (no alias, so it awaits manual approval); promotion is never automatic.
 winner is final: do not pick another trial, run a new experiment instead.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging

@@ -8,6 +8,8 @@ the DagsHub username/token used to authenticate are secrets loaded from the
 process environment (populated from a gitignored ``.env`` file).
 """
 
+from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path

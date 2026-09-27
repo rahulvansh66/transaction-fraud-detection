@@ -6,6 +6,8 @@ without AWS) and the deterministic source packaging used by both single training
 AMT trials. Used by ``run_training_job.py`` and ``hpo_tuner.py``.
 """
 
+from __future__ import annotations
+
 import gzip
 import hashlib
 import io

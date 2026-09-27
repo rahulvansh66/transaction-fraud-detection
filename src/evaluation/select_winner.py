@@ -4,6 +4,8 @@ Runs after a tuning job. It never reads test data, never gates and never registe
 on test would tune the model to the test set and make its score optimistic.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging

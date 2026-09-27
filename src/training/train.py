@@ -5,6 +5,8 @@ Hyperparameters arrive as ``--key value`` CLI args (from AMT, or from the launch
 manual runs). It never reads the test split; test scoring belongs to ``evaluate.py``.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging

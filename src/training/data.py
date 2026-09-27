@@ -1,5 +1,7 @@
 """Data loading for training: reads processed parquet splits and their metadata."""
 
+from __future__ import annotations
+
 import json
 import logging
 from pathlib import Path
