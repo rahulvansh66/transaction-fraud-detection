@@ -79,6 +79,33 @@ def download_split(bucket: str, prefix: str, dest: Path) -> Path:
     return dest
 
 
+def resolve_model_uri(client: MlflowClient, run_id: str) -> str:
+    """Finds the MLflow model URI logged by a training run.
+
+    MLflow 3's model logging creates a ``LoggedModel`` entity separate from the run's
+    own artifact store, so ``runs:/<run_id>/model`` no longer resolves. This looks the
+    logged model up via its ``source_run_id`` and returns its ``models:/<model_id>`` URI.
+
+    Args:
+        client: MLflow client.
+        run_id: Run id that logged the model with :func:`mlflow.xgboost.log_model`.
+
+    Returns:
+        A ``models:/<model_id>`` URI usable by :func:`mlflow.xgboost.load_model` and
+        :func:`mlflow.register_model`.
+
+    Raises:
+        RuntimeError: If the run logged no model, or logged more than one.
+    """
+    run = client.get_run(run_id)
+    models = client.search_logged_models(
+        experiment_ids=[run.info.experiment_id], filter_string=f"source_run_id='{run_id}'"
+    )
+    if len(models) != 1:
+        raise RuntimeError(f"run {run_id} logged {len(models)} models, expected exactly 1")
+    return f"models:/{models[0].model_id}"
+
+
 def score(model_uri: str, x_test: Any, y_test: Any, threshold: float) -> dict[str, float]:
     """Loads a logged XGBoost model and computes test metrics.
 
@@ -141,7 +168,8 @@ def evaluate(run_id: str, gate: dict[str, Any], test_dir: Path, allow_rescore: b
     schema = json.loads(Path(client.download_artifacts(run_id, "features.json")).read_text(encoding="utf-8"))
     x_test, y_test = load_split(test_dir, schema["features"], schema["label"])
 
-    report = score(f"runs:/{run_id}/model", x_test, y_test, run.data.metrics["threshold"])
+    model_uri = resolve_model_uri(client, run_id)
+    report = score(model_uri, x_test, y_test, run.data.metrics["threshold"])
     prod = production_report(client, gate, x_test, y_test)
     passed, reasons = apply_gate(report, gate, prod)
 
@@ -154,7 +182,7 @@ def evaluate(run_id: str, gate: dict[str, Any], test_dir: Path, allow_rescore: b
                 run_id, passed, report["aucpr"], reasons)
 
     if passed:
-        version = mlflow.register_model(f"runs:/{run_id}/model", gate["model_name"])
+        version = mlflow.register_model(model_uri, gate["model_name"])
         logger.info("step=register status=registered model=%s version=%s awaiting_approval=true",
                     gate["model_name"], version.version)
     return passed
