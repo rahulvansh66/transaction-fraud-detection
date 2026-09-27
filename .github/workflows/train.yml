@@ -16,8 +16,10 @@ on:
         type: choice
         options: [manual, hpo, production]
         default: manual
-  schedule:
-    - cron: "0 3 * * 1" # weekly retrain of the approved config, production kind only
+  # DISABLED until an approved config/production/model.yaml and the PRODUCTION_DATA_RUN_ID
+  # repository variable exist. See DOCS/model-training/train-workflow-explained.md (3.2).
+  # schedule:
+  #   - cron: "0 3 * * 1" # weekly retrain of the approved config, production kind only
 
 permissions:
   id-token: write
