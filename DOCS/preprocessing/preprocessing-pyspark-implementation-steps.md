@@ -31,7 +31,7 @@ down". For Spark, SageMaker gives you an AWS-managed Spark image; you supply you
 You are billed only while the job runs. Logs go to CloudWatch.
 
 **Two pieces of code, two places they run:**
-- *Launcher* (`src/preprocessing/run_sagemaker_preprocessing_job.py`) runs on **your machine**. It only tells
+- *Launcher* (`src/preprocessing/run_preprocessing_job.py`) runs on **your machine**. It only tells
   SageMaker "start a job with this script and these inputs".
 - *Job script* (`src/preprocessing/spark_job.py`) runs **inside SageMaker**. This is the real work.
 
@@ -320,7 +320,7 @@ the running interpreter; set the same variable if you run the job script directl
 
 ---
 
-## 7. Write the launcher (`src/preprocessing/run_sagemaker_preprocessing_job.py`)
+## 7. Write the launcher (`src/preprocessing/run_preprocessing_job.py`)
 
 **Goal:** start the SageMaker job from your machine. This is where SageMaker-specific code lives.
 
@@ -368,9 +368,53 @@ Notes for a beginner:
 
 ---
 
+### 7.1 Concept: how code reaches the container (the deps zip)
+
+A SageMaker Spark container receives only what the launcher hands it, not the repo. `PySparkProcessor.run(submit_app=...)`
+uploads and runs the entry script (`spark_job.py`); every module it imports must be shipped separately.
+
+| File | In `preprocessing_deps.zip`? | Why |
+| --- | --- | --- |
+| `spark_job.py` | No | Entry script, shipped by `submit_app`. A second copy would have to be kept in sync. |
+| `features.py` | Yes | Imported by `spark_job.py`. |
+| `lineage.py` | Yes | Imported by `spark_job.py` for `config_hash`; the launcher imports the same file, so both sides always compute the same hash. |
+| `run_preprocessing_job.py` | No | Client-side (laptop/CI); needs `boto3` and the SageMaker SDK, which the container never uses. |
+
+Rule: the zip holds the library modules the entry script imports, not the entry script and not the launcher. The
+container mounts it at `/opt/ml/processing/input/deps/`, and `spark_job.py` puts the zip on `sys.path` (Python imports
+straight from a zip), so `import features` works there. Nothing on your laptop reads the zip.
+
+**Why the zip lives under `processed/<run_id>/deps/` (and not a shared `deps/` path):**
+- **Reproducibility:** the run prefix then holds the exact code (`deps/`), parameters (`config/`) and output of that run,
+  so "which `features.py` produced this model's data?" is answered by looking in one folder.
+- **No overwrites:** a shared, mutable path would be replaced by the next run, silently destroying the code of every earlier
+  run and breaking audit and rollback. Run-scoped, immutable keys cannot be clobbered.
+- **No races:** two runs launched at once (different commits or data versions) each read their own zip, never the other's.
+- **Cleanup and access:** retention or deletion of a run, and IAM scoping, apply to the whole prefix in one rule.
+- The zip is built deterministically (fixed timestamps, sorted entries), so identical sources give identical bytes and a
+  stable checksum (`deps_sha256` in the launcher log).
+
+### 7.2 Concept: one job script, local or SageMaker
+
+The launcher (`run_sagemaker_preprocessing_job.py`) is SageMaker-only and never runs Spark itself. Local vs cloud is
+decided by how `spark_job.py` is invoked, and the script has no environment switch:
+
+- **Paths are arguments.** `--input-uri` / `--output-uri` take local paths or `s3://` URIs. Locally you pass local paths;
+  the launcher passes S3 URIs.
+- **Import fallback.** `spark_job.py` tries `from src.preprocessing import features` (local, package import) and on failure
+  adds the mounted `preprocessing_deps.zip` to `sys.path` and imports `features` / `lineage` as top-level modules (SageMaker
+  ships only the one script, not the `src` package; see 7.1).
+- **Spark master.** Local runs use `local[*]`; on SageMaker the Spark container provides the cluster.
+
+| | Local | SageMaker |
+| --- | --- | --- |
+| Entry | `python src/preprocessing/spark_job.py ...` | `python -m src.preprocessing.run_sagemaker_preprocessing_job` |
+| Data | local paths | `s3://` URIs |
+| Code | repo imports | deps zip mounted at `/opt/ml/processing/input/deps` |
+
 ## 8. Smoke run on SageMaker (`data-v0`)
 
-1. `uv run python -m src.preprocessing.run_sagemaker_preprocessing_job`
+1. `uv run python -m src.preprocessing.run_preprocessing_job`
 2. Watch the streamed logs. First-time failures are usually one of: `AccessDenied` (step 6 not
    applied), `ModuleNotFoundError` (a dependency missing in the container, so add it or use
    `submit_py_files`), or a wrong S3 path.
@@ -383,7 +427,7 @@ Notes for a beginner:
 `run_id`, `git_commit` and split counts, with no PII.
 
 **Status (done).** The smoke run completed; splits, `thresholds`, `scale_pos_weight`, row and fraud counts match
-`dataset/processed/data-v0`. Launch with `uv run python -m src.preprocessing.run_sagemaker_preprocessing_job [--allow-dirty]`
+`dataset/processed/data-v0`. Launch with `uv run python -m src.preprocessing.run_preprocessing_job [--allow-dirty]`
 (`--allow-dirty` adds a `-dirty-<diff hash>` suffix to the run id; use only for smoke runs).
 Run id = `<git_sha>-<config_hash>-<data_version>`, so the same code and config on a new dataset version gets its own prefix.
 

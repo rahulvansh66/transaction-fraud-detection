@@ -2,7 +2,7 @@
 
 # Fraud Detection Pipeline — Build Plan
 
-## v1 — Training + Inference Pipeline (SageMaker, MLflow, S3)
+## v1 — Training + Inference Pipeline (SageMaker, DagsHub MLflow, S3)
 
 ### Step 1: Set up AWS foundations
 - Create/access an AWS account (sandbox is fine for learning)
@@ -11,17 +11,22 @@
   - `raw/` — incoming transaction data
   - `processed/` — cleaned/feature-engineered data
   - `models/` — trained model artifacts
-  - `mlflow-artifacts/` — MLflow experiment artifacts
-- Launch a SageMaker Studio domain (your notebook environment for everything below)
+- Setup SageMaker Studio domain if doesnt have.
 
-### Step 2: Stand up MLflow tracking
-- Use SageMaker's managed MLflow capability (launched from Studio — no EC2/server to manage)
-- Point its artifact store at your S3 bucket (`mlflow-artifacts/`)
+### Step 2: Set up MLflow tracking on DagsHub
+- Create a DagsHub repo (connect it to the GitHub repo) — DagsHub hosts a managed MLflow tracking server + model registry, so there is nothing to run on AWS
+- Tracking URI: `https://dagshub.com/<user>/<repo>.mlflow`; artifacts are stored on DagsHub's storage
+- Authenticate with `MLFLOW_TRACKING_URI`, `MLFLOW_TRACKING_USERNAME`, `MLFLOW_TRACKING_PASSWORD` (DagsHub access token); keep them in `.env` locally and in AWS Secrets Manager (`fraud-detection/<env>/dagshub-mlflow`, defined in Terraform at `infrastructure/dagshub_secret.tf`; token passed via `TF_VAR_dagshub_token`) for SageMaker jobs — never in code or logs
+- Grant the SageMaker execution role `secretsmanager:GetSecretValue` on that secret (policy document in the same Terraform file)
+- Allow outbound internet (NAT/no VPC-isolation) for SageMaker jobs so they can reach DagsHub
 - This is where every experiment run, metric, and model version gets logged going forward
 
 ### Step 3: Build the preprocessing step
-- Write a preprocessing script (pandas/sklearn): clean raw transaction data, engineer features, split train/test
-- Run it as a SageMaker Processing job (decouples data prep from training — this is how production pipelines do it, not inline in a notebook)
+- Start by prototyping your preprocessing/feature engineering logic on a small sample in pandas/sklearn in a notebook locally (fast iteration)
+: Apply appropriate preprocessing steps, engineer features, split train/test. 
+
+- Port the finalized logic to PySpark for the actual Processing job. That way you're not debugging Spark's distributed quirks while you're still figuring out what features you want.
+- Run it as a SageMaker Spark Processing job (decouples data prep from training — this is how production pipelines do it, not inline in a notebook)
 - Output goes to `processed/` in S3
 
 ### Step 4: Train with experiment tracking
@@ -29,11 +34,11 @@
   - `train_xgboost.py` — XGBoost (fraud detection)
 - Use SageMaker's built-in algorithm containers or your own script in a SageMaker Training job
 - Wrap training calls with MLflow logging: `mlflow.log_param`, `log_metric`, `log_model`
-- Every run becomes comparable in the MLflow UI
+- Every run becomes comparable in the DagsHub MLflow UI
 
 ### Step 5: Register the best model
 - Compare runs in MLflow, pick the winner for each model type
-- Register it in the MLflow Model Registry (or promote to SageMaker Model Registry)
+- Register it in the DagsHub-hosted MLflow Model Registry (or promote to SageMaker Model Registry)
 - This is your first real "promotion gate" — only explicitly registered models get deployed
 - CI/CD for model trianing/retraining 
 

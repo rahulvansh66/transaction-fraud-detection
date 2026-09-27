@@ -45,7 +45,7 @@ s3://<data_bucket>/processed/<run_id>/train/part-*.parquet
                                      /metadata.json
 ```
 
-- **Launcher** (`src/preprocessing/run_sagemaker_preprocessing_job.py`, runs on a laptop / CI / later the pipeline): builds the `PySparkProcessor` and calls `run()`. It reads the role ARN and bucket from `config/env/dev.yaml`.
+- **Launcher** (`src/preprocessing/run_preprocessing_job.py`, runs on a laptop / CI / later the pipeline): builds the `PySparkProcessor` and calls `run()`. It reads the role ARN and bucket from `config/env/dev.yaml`.
 - **Entry script** (`src/preprocessing/spark_job.py`): arg parsing, `logging.basicConfig`, SparkSession creation, orchestration. This is the only place that configures logging.
 - **Feature logic** (`src/preprocessing/features.py`): pure `DataFrame -> DataFrame` functions, testable with a local SparkSession.
 - **Data I/O via `s3://` URIs** passed as arguments (`--input-uri`, `--output-uri`). `ProcessingInput` copies data to each node's local disk, which breaks multi-node Spark, so it carries only the small config YAML (uploaded to S3 by the launcher first). The input URI is recorded in `metadata.json` for lineage.
@@ -119,7 +119,7 @@ src/preprocessing/
     features.py          # pure DataFrame -> DataFrame functions + feature constants
     spark_job.py         # entry point: args, logging, SparkSession, orchestration, metadata
 scripts/
-    run_sagemaker_preprocessing_job.py   # launcher: builds PySparkProcessor, calls run()
+    run_preprocessing_job.py   # launcher: builds PySparkProcessor, calls run()
 tests/preprocessing/
     test_features.py     # local[2] SparkSession unit tests per function
     test_parity.py       # Spark output vs notebook/pandas output on data-v0
@@ -195,7 +195,7 @@ Step 4 (training) will read this file and log it to MLflow (dataset URI, `run_id
 - [ ] `spark_job.py`: entry point, config, metadata, validation
 - [ ] Local unit and parity tests green
 - [ ] Terraform: S3 policy fix and log group with retention (section 7); `terraform plan` reviewed before apply
-- [ ] `run_sagemaker_preprocessing_job.py` launcher; SageMaker smoke run on `data-v0`
+- [ ] `run_preprocessing_job.py` launcher; SageMaker smoke run on `data-v0`
 - [ ] Document the final `processed/<run_id>/` contract for the training step
 - [ ] Future (out of scope now): upload the full dataset under `raw/`, scale test, tune sizing (section 12)
 

@@ -13,20 +13,18 @@ The split follows one rule: **separate code by why it changes and where it runs.
 - It is the only place that knows it is running as a SageMaker Processing step. It also holds the run identifiers and lineage logging that CLAUDE.md requires.
 - Changing the input or output layout, or moving to another runner such as Glue, touches this file and not the feature logic.
 
-**3. [run_sagemaker_preprocessing_job.py](src/preprocessing/run_sagemaker_preprocessing_job.py): launcher**
+**3. [run_preprocessing_job.py](src/preprocessing/run_preprocessing_job.py): launcher**
 - It submits the job to SageMaker from the client side: instance type, S3 URIs, and job naming.
-- It is kept outside `src/` because it runs on your laptop or in CI, not inside the container. It is a thin wrapper that will later become a pipeline step.
+- It helps to run job on your laptop or sagemaker or any other machine. It is a thin wrapper that will later become a pipeline step.
 
 **4. Config in YAML, infrastructure in Terraform**
 - Hyperparameters and paths such as time-split cutoffs and type filters live in [preprocessing.yaml](config/preprocessing/preprocessing.yaml), not in code. This is the `ml-repo-structure` rule.
 - Buckets, roles and log groups live in Terraform.
 
 **5. Tests mirror the code, plus a parity test**
-- `test_features.py` tests each feature function on its own.
-- `test_parity.py` checks that the PySpark output matches the original notebook's pandas logic. That protects reproducibility during the migration.
+- In unit test, `test_features.py` tests each feature function on its own.
+- `test_parity.py` is for integration test, that checks that the PySpark output matches the original notebook's pandas logic. That protects reproducibility during the migration.
 
 **Why it helps at 15GB+ scale**
 - The same `features.py` runs unchanged on a local subset or a multi-node cluster. Scaling up only changes the launcher's instance count and the Spark configuration.
 - Each layer can be swapped without touching the others. Each also has one clear reason to change and one way to test it.
-
-The doc's section 0 ("Mental model") and sections 3 to 5 cover the same reasoning in more detail.
