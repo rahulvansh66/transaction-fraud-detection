@@ -1,19 +1,21 @@
 name: train
 # Hyperparameters live in config/experiments/*.yaml and config/production/model.yaml,
 # never here. This workflow only passes which config and which immutable data run to use.
+# kind: manual = one deliberate run of manual_params; hpo = AMT search over search_space;
+# production = retrain the approved config. Every kind is then evaluated on test and gated.
 on:
   workflow_dispatch:
     inputs:
       experiment:
-        description: "config/experiments file (hpo) or baseline for production"
+        description: "config/experiments/*.yaml (manual: uses manual_params, hpo: uses search_space)"
         required: true
       data_run_id:
         description: "immutable processed/<run_id> (never 'latest')"
         required: true
       kind:
         type: choice
-        options: [hpo, production]
-        default: hpo
+        options: [manual, hpo, production]
+        default: manual
   schedule:
     - cron: "0 3 * * 1" # weekly retrain of the approved config, production kind only
 
