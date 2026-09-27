@@ -62,7 +62,7 @@ Every MLflow run is tagged `mode=manual|hpo|production`.
 ```toml
 [project]
 dependencies = [
-  "xgboost==1.7.6",        # must equal the container framework_version
+  "xgboost==1.7.4",        # must equal the container framework_version
   "scikit-learn",
   "mlflow",
 ]

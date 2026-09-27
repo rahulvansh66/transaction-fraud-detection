@@ -14,7 +14,7 @@ dependencies = [
     "sagemaker-core>=2.23.0",
     "sagemaker-mlops>=1.23.0",
     "scikit-learn>=1.9.1",
-    "xgboost==1.7.6",
+    "xgboost==1.7.4",
 ]
 
 [build-system]
