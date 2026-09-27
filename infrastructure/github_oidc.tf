@@ -23,7 +23,9 @@ variable "github_subject_patterns" {
 variable "create_github_oidc_provider" {
   description = "Set false if the account already has the token.actions.githubusercontent.com provider."
   type        = bool
-  default     = true
+  # This AWS account already has the provider (created outside this config, confirmed by
+  # apply failing with EntityAlreadyExists), so it is only looked up here, never created.
+  default = false
 }
 
 data "aws_caller_identity" "current" {}
