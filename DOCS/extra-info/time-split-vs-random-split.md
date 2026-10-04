@@ -30,6 +30,12 @@ So split by time: oldest data for train, next slice for validation, newest for t
 
 **Rule of thumb:** each row sees only what existed at its own timestamp, and the test set must be newer than the training set.
 
+Reference code:
+
+1. **Look-back feature.** It shows the window in `add_past_counts` ([features.py:71-99](src/preprocessing/features.py#L71-L99)), where the window runs from the first row up to the current step. It also links the call site in `spark_job.py` and the serving contract in `feature_contract.yaml`.
+2. **Time-based split.** It shows `split_thresholds` and `time_split` ([features.py:164-199](src/preprocessing/features.py#L164-L199)) and the 70/15/15 config in [preprocessing.yaml](config/preprocessing/preprocessing.yaml#L19-L22).
+
+
 ---
 
 > Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
