@@ -116,3 +116,7 @@ Reproducibility breaks if a re-run reads different bytes. Two concrete changes:
 
 Passes A–D are the reproducibility core; E–F are the experimentation operating
 model.
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

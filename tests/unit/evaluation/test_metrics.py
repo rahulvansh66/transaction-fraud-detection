@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Unit tests for shared metrics and threshold selection."""
 
 import math

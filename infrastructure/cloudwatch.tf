@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 ###############################################################################
 # CloudWatch logging and container access for SageMaker Processing jobs
 #

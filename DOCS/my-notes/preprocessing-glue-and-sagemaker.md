@@ -318,4 +318,6 @@ re-evaluate whether it actually adds signal.
 | `overdraft`           | `amount > oldBalanceOrig`          |
 | `zeroBalanceOrig`     | `oldBalanceOrig == 0`              |
 
+---
 
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

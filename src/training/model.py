@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """XGBoost parameter building and fitting (pure logic, no I/O or MLflow)."""
 
 from __future__ import annotations

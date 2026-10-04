@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Unit tests for SageMaker request builders, AMT ranges and launch-time guards (no AWS calls)."""
 
 import gzip

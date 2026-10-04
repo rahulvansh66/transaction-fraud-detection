@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Lineage helpers for training runs (code, config and data identifiers).
 
 Reuses the preprocessing hash logic so preprocessing and training compute identical

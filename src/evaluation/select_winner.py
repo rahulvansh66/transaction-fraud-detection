@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Selects the best AMT trial by VALIDATION metric and tags it ``winner=true``.
 
 Runs after a tuning job. It never reads test data, never gates and never registers: ranking

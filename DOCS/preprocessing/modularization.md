@@ -28,3 +28,7 @@ The split follows one rule: **separate code by why it changes and where it runs.
 **Why it helps at 15GB+ scale**
 - The same `features.py` runs unchanged on a local subset or a multi-node cluster. Scaling up only changes the launcher's instance count and the Spark configuration.
 - Each layer can be swapped without touching the others. Each also has one clear reason to change and one way to test it.
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

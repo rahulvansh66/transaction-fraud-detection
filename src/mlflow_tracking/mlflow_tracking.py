@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """MLflow tracking setup against the project's DagsHub-hosted server.
 
 Pipeline steps and training scripts import :func:`configure_mlflow_tracking`

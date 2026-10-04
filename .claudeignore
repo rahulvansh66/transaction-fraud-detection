@@ -1,3 +1,8 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 # Lists files and directories (build artifacts, caches, secrets, CDK output) excluded from version control.
 .tmp/
 DOCS/my-notes/
+DOCS/extra-info

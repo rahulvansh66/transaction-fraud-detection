@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 # Preprocessing / feature-engineering settings shared by the prototype notebook
 # and (later) the PySpark processor. Environment values (buckets, ARNs) live in
 # config/env/, not here.

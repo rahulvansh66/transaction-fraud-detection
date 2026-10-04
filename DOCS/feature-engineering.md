@@ -33,3 +33,7 @@ Fraud occurs only in `TRANSFER` and `CASH_OUT` (per the notebook), so the base m
 - **Drop from the model input:** raw `nameOrig`, `nameDest`, `type` (replaced by `is_transfer`) and `isFlaggedFraud` (the notebook concludes it is meaningless, with only 16 rows set).
 - **Priority if you want fewer:** #1, #2, #4, #7 and #8 are the core. #3 and #5 are cheap refinements, and #6 is optional.
 - **Config:** thresholds such as the night hours belong in `config/`, not in code.
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

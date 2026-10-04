@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 ###############################################################################
 # Permissions for SageMaker Training and Automatic Model Tuning (AMT) jobs
 #

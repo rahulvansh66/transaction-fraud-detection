@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """SageMaker/local training entry script: trains XGBoost on train+val and logs lineage to MLflow.
 
 This is the only module that knows about SageMaker (``SM_CHANNEL_*``, ``SM_MODEL_DIR``).

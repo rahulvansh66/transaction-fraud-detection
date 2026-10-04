@@ -1013,3 +1013,7 @@ https://github.com/sofianhamiti/amazon-sagemaker-github-actions-mlflow
 
 Medium:
 https://medium.com/data-science/5-simple-steps-to-mlops-with-github-actions-mlflow-and-sagemaker-pipelines-19abf951a70
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

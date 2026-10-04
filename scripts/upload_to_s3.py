@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """One-off script: uploads a local dataset directory to S3 under a versioned prefix.
 
 Runs after ``csv_to_hive_parquet.py``. Objects land at

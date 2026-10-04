@@ -79,3 +79,7 @@
 - Streaming ingestion (Kafka/MSK) in front of the pipeline
 - Multi-model endpoints / autoscaling
 - Full production hardening (VPC, encryption, alerting, IaC)
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

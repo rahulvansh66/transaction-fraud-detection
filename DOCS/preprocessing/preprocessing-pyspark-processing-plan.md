@@ -215,3 +215,7 @@ Deferred. Do this only after the `data-v0` pipeline is complete end to end.
 - Run the scale test: record duration, cost, spill and the longest task (skew indicator). Decide final sizing and whether the 4.2 fallback is needed.
 - Optionally enable Spark event logs (`spark-history/`, section 7 item 4).
 - Commit tuned settings to `preprocessing.yaml` / `config/env/`.
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

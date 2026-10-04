@@ -63,3 +63,11 @@ A passing model is registered in the MLflow Model Registry as a candidate. Promo
 - `ci.yml` runs on pull requests (ruff, unit tests, `terraform validate`). It never starts a job.
 - `train.yml` starts only on **Actions → train → Run workflow** (inputs: experiment file, data run id, kind) or its weekly schedule (`production` kind). It authenticates via OIDC using the repository variables `AWS_OIDC_ROLE_ARN` and `AWS_REGION`.
 - Pushing or committing code does not start a training job.
+
+## Author
+
+Built by Rahul Vansh · [LinkedIn](https://www.linkedin.com/in/rahul-vansh/)
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

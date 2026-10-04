@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Unit tests for the launcher's deps packaging and immutable S3 writes."""
 
 import importlib

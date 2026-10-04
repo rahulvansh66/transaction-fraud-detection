@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 # Dev-environment values: which tracking server / bucket / account this execution
 # talks to. Never put model hyperparameters here — see config/experiments/ and
 # config/production/ for those.

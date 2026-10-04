@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Client-side launcher for training: local subprocess, one SageMaker job, or an AMT search.
 
 Contains no ML logic: it resolves the experiment config, derives lineage identifiers and

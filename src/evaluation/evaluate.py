@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Scores the validation-selected winner once on the TEST split, applies the gate, registers.
 
 This is the only place the test split is read. The winner reuses the threshold chosen on

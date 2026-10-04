@@ -89,3 +89,7 @@ project/
 ```
 
 That last section ties back to the Kafka architecture from earlier — once v1 is solid, its endpoint is exactly the "ML inference" box in those diagrams.
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

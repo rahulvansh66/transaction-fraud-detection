@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Unit tests for run identity helpers in ``src/preprocessing/lineage.py``."""
 
 from src.preprocessing import lineage

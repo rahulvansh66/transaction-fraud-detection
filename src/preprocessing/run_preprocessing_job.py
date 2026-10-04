@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Launcher: starts the PySpark preprocessing job as a SageMaker Processing job.
 
 Runs on the developer/CI machine (or later as a pipeline step). It derives the

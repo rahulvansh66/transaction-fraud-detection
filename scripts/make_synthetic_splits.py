@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Generates synthetic processed splits (same contract as the preprocessing job) for local training runs.
 
 The committed sample data has only a handful of rows, too few to train on. This writes

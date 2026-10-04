@@ -93,3 +93,55 @@ land there.
   (docstrings for any function/class defined in the notebook, type hints,
   `logging` over `print`, sparse in-code comments for block separation).
 
+## File banner (follow always)
+
+Every new file gets the project banner, so authorship is visible in every file.
+The banner text is exactly:
+
+`Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS`
+
+Apply it by file type:
+
+- **Hash-comment files** (`.py`, `.tf`, `.yaml`/`.yml`, `.toml`, Dockerfile,
+  shell scripts, `.gitignore`, `.claudeignore`, `.env.example`,
+  `requirements.txt`): a boxed 3-line header at the very top, followed by
+  exactly one blank line. The `=` borders are as wide as the text line.
+
+  ```
+  # =======================================================================
+  # Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+  # =======================================================================
+
+  ```
+
+  - In Python, the banner goes above the module docstring, so the docstring
+    rule still holds.
+  - In files with a shebang (`#!`) or a coding line, the banner goes right
+    after them, which must stay first.
+  - Skip empty files (e.g. empty `__init__.py`).
+- **Markdown** (`.md`): footer only, no header. The file starts with its title.
+  The footer is a `---` rule and the banner as a blockquote at the very end of
+  the file.
+
+  ```
+  # Title
+  ...content...
+
+  ---
+
+  > Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+  ```
+
+  Exception: files that need YAML frontmatter on line 1 (e.g.
+  `.claude/skills/*/SKILL.md`) get no banner.
+- **Jupyter notebooks** (`.ipynb`): the first cell is a markdown cell containing
+  the banner text in italics (`*Rahul's AI Lab · …*`), above the notebook title.
+- **Data and generated files** (JSON, CSV, Parquet, `mlflow.db`, `uv.lock`,
+  `.terraform.lock.hcl`): no banner, since comments would corrupt or be
+  overwritten by the tooling.
+
+Never duplicate the banner: if a file already contains it, leave it as is.
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

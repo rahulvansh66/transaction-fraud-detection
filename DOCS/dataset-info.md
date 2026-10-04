@@ -96,3 +96,7 @@ isFlaggedFraud - The business model aims to control massive transfers from one a
 
 
    
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

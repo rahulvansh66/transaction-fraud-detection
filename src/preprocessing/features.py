@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """PySpark feature-engineering functions for the fraud preprocessing step.
 
 Port of the pandas prototype in ``notebooks/01_preprocessing_feature_engineering.ipynb``.

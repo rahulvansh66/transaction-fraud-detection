@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Builds and submits SageMaker Automatic Model Tuning (AMT) jobs from an experiment config.
 
 Used only for ``--kind hpo``. The search space is read from the experiment YAML, never

@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Shared classification metrics and threshold selection.
 
 Used by both training (validation) and evaluation (test) so "good" has a single

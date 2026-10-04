@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Shared config-file loading utilities.
 
 Every pipeline step (preprocessing, training, evaluation, inference,

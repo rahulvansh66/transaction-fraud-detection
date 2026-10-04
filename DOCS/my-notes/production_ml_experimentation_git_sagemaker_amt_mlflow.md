@@ -910,3 +910,7 @@ A strong interview answer:
 ## One-line rule
 
 > **Use humans to guide what is worth trying, AMT to search efficiently, Pipeline Parameters to inject runtime values, Git to version the intent/configuration, and MLflow to record the evidence and approved model.**
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

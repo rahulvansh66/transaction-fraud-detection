@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 name: train
 # Hyperparameters live in config/experiments/*.yaml and config/production/model.yaml,
 # never here. This workflow only passes which config and which immutable data run to use.

@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """One-off data-prep script: raw CSV -> Hive-partitioned Parquet on local disk.
 
 Runs *before* the SageMaker pipeline. The pipeline's preprocessing step assumes

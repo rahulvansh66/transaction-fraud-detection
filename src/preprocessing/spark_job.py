@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Entry point of the PySpark preprocessing job (SageMaker Spark Processing step).
 
 Reads raw Hive-partitioned parquet, applies the feature logic in ``features.py``,

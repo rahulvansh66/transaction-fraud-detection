@@ -198,3 +198,7 @@ uv run python -m src.training.run_training_job --mode sagemaker --kind manual \
 - [infrastructure/github_oidc.tf](../../infrastructure/github_oidc.tf): the AWS role and its trust rules.
 - [config/evaluation/gate.yaml](../../config/evaluation/gate.yaml): pass/fail thresholds.
 - [config/experiments/](../../config/experiments/) and [config/production/model.yaml](../../config/production/model.yaml): the hyperparameters and search spaces.
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

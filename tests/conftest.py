@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Shared pytest fixtures for the preprocessing tests (one local SparkSession)."""
 
 import os

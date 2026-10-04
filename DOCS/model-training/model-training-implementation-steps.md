@@ -506,3 +506,7 @@ Notes:
 - Unverified on AWS: container Python version vs. the code's 3.10+ syntax, `metadata.json` as an S3Prefix channel, and image digest capture (only the tag URI is recorded).
 - Prod bucket and role ARNs are placeholders.
 - Stale `tests/preprocessing/*` entries in the git index are left alone.
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

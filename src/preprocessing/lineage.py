@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Run-identity helpers shared by the preprocessing launcher and the Spark job.
 
 The launcher derives the immutable ``run_id`` and the job logs the same

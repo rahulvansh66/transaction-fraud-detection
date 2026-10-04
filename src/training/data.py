@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Data loading for training: reads processed parquet splits and their metadata."""
 
 from __future__ import annotations

@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """Builds SageMaker training-job requests and the script-mode source bundle.
 
 The installed SageMaker SDK (v3) no longer ships the v2 ``XGBoost`` estimator, so jobs are

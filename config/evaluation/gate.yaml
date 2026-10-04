@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 # Promotion gate applied once to the validation-selected winner on the TEST split.
 # Placeholders while data is synthetic: tighten after the first real preprocessing run.
 model_name: fraud-detector

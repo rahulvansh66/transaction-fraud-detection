@@ -98,3 +98,7 @@ Add `xgboost` and `scikit-learn` to `pyproject.toml` (refresh `uv.lock`) and `ru
 - MLflow registry vs SageMaker Model Package Group (defaulting to MLflow).
 - Prod bucket and role ARNs are placeholders, so CI targets `dev` only for now.
 - Stale `tests/preprocessing/*` entries are in the git index; they are left alone.
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

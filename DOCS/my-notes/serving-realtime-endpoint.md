@@ -108,3 +108,7 @@ audit, and later label-joining once ground-truth fraud outcomes are known.
   up, design a SageMaker Batch Transform job; do not extend this endpoint.
 - **Model refresh** — how a newly trained/approved model gets promoted to this endpoint
   (blue/green, canary) is owned by the deploy pipeline, tracked separately.
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

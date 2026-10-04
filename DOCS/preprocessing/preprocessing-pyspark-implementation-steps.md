@@ -509,3 +509,7 @@ right (roughly 40% of raw rows kept, fraud in every split, ideally).
 | One tiny file per task / thousands of files | Missing `repartition` before write (design doc 4.5) |
 | `FileNotFoundError` for input on multi-node runs | Data passed via `ProcessingInput` (local disk); use an `s3://` URI in the script |
 | Local Spark fails on Windows with `HADOOP_HOME` | Local winutils issue only; use WSL or install winutils |
+
+---
+
+> Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS

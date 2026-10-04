@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 # Feature contract between preprocessing (training) and serving (inference).
 #
 # Records exactly how each model feature is defined at training time so the

@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 """End-to-end job test and parity check against the pandas notebook output on ``data-v0``."""
 
 import json

@@ -1,3 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
 # Experiment 001: tree structure. Modest ranges because we go straight to AMT
 # without prior manual runs. Environment values (buckets, ARNs) live in config/env/.
 experiment:
