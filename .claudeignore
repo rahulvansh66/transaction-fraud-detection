@@ -5,4 +5,4 @@
 # Lists files and directories (build artifacts, caches, secrets, CDK output) excluded from version control.
 .tmp/
 DOCS/my-notes/
-DOCS/extra-info
+<!-- DOCS/extra-info -->
