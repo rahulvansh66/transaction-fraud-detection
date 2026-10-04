@@ -1,0 +1,19 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
+name: ci
+on: pull_request
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: hashicorp/setup-terraform@v3
+      - run: uv sync
+      - run: uv run ruff check src tests scripts
+      - run: uv run pytest tests/unit
+      - run: terraform -chdir=infrastructure fmt -check
+      - run: terraform -chdir=infrastructure init -backend=false && terraform -chdir=infrastructure validate

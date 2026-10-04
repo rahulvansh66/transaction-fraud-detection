@@ -1,0 +1,7 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
+mlflow>=2.14
+python-dotenv>=1.0
+pyyaml>=6.0

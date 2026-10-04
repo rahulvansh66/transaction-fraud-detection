@@ -1,0 +1,32 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
+# Prod-environment values: which tracking server / bucket / account this execution
+# talks to. Never put model hyperparameters here — see config/experiments/ and
+# config/production/ for those.
+#
+# TODO: pointing at the same DagsHub repo/experiment namespace as dev for now.
+# Revisit once a separate prod tracking server or DagsHub project is provisioned.
+mlflow:
+  tracking_uri: "https://dagshub.com/<user>/<repo>.mlflow"
+  experiment_name: "transaction-fraud-detection-prod"
+
+# TODO: the roles below are the *-dev-* roles reused as a placeholder — only
+# a dev AWS account/role set exists so far. Provision separate prod roles via
+# Terraform once a prod AWS account is set up, then update these ARNs.
+aws:
+  region: "us-east-1"
+  account_id: "${AWS_ACCOUNT_ID}"
+  # Created by infrastructure/s3.tf (name = fraud-detection-<env>-<account_id>).
+  data_bucket: "fraud-detection-prod-${AWS_ACCOUNT_ID}"
+  iam_roles:
+    glue_preprocess_role_arn: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/fraud-detection-dev-glue-preprocess"
+    sagemaker_execution_role_arn: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/fraud-detection-dev-sagemaker-execution"
+    sagemaker_pipeline_role_arn: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/fraud-detection-dev-sagemaker-pipeline"
+
+# Training-job sizing only; model settings live in config/production/.
+training:
+  instance_type: "ml.m5.2xlarge"
+  max_run: 7200
+  use_spot_instances: false

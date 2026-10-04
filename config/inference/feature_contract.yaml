@@ -1,0 +1,65 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
+# Feature contract between preprocessing (training) and serving (inference).
+#
+# Records exactly how each model feature is defined at training time so the
+# inference step can reproduce it. Keep it in sync with
+# src/preprocessing/features.py and config/preprocessing/preprocessing.yaml.
+# Environment values (buckets, ARNs) do not belong here; see config/env/.
+contract_version: 1
+
+scope:
+  # Model was trained only on these types; serving must route other types to a
+  # rule (treated as non-fraud) or reject them.
+  transaction_types: ["TRANSFER", "CASH_OUT"]
+  time_axis: "step"            # one step = one simulated hour; the only time axis (no timestamps)
+
+# Order of model inputs; must match the training output columns exactly.
+feature_order:
+  - is_transfer
+  - amount
+  - log_amount
+  - hour_of_day
+  - is_night
+  - day_of_month
+  - orig_txn_count
+  - dest_txn_count
+
+features:
+  is_transfer:    {definition: "1 if type == TRANSFER else 0"}
+  amount:         {definition: "raw transaction amount"}
+  log_amount:     {definition: "log1p(amount)"}
+  hour_of_day:    {definition: "step % 24"}
+  is_night:       {definition: "1 if hour_of_day within night_hours (inclusive), else 0", night_hours_source: "config/preprocessing/preprocessing.yaml features.night_hours"}
+  day_of_month:   {definition: "step // 24"}
+  orig_txn_count:
+    definition: "number of transactions made by nameOrig with step <= current step"
+    account_column: nameOrig
+  dest_txn_count:
+    definition: "number of transactions received by nameDest with step <= current step"
+    account_column: nameDest
+
+# The two account-count features are the only ones that use account IDs (the raw IDs
+# themselves are never model inputs). They are the main train/serve skew risk.
+account_count_semantics:
+  window: "all history from the start of the data up to and including the current step (unbounded lookback)"
+  counts_all_transaction_types: true    # computed BEFORE the type filter; PAYMENT, CASH_IN, DEBIT count too
+  same_step_rows: "simultaneous; they share one count, no order between them is assumed (RANGE frame on step)"
+  serving_requirements:
+    - "Serving must look up each account's full prior history (all types, all earlier steps), not a shorter rolling window or only TRANSFER/CASH_OUT rows."
+    - "The count includes the current transaction and any other transactions of the account in the same step."
+    - "Account history store must be refreshed at least as fast as the data feeding it, or counts under-report and the model sees a distribution it was not trained on."
+  known_risk: "If serving computes these counts differently from training (shorter window, filtered types, stale store), predictions silently degrade."
+
+# Columns that must never reach the model, in training or at serving.
+forbidden_inputs:
+  - nameOrig
+  - nameDest
+  - type                # replaced by is_transfer
+  - isFlaggedFraud
+  - oldbalanceOrg
+  - newbalanceOrig
+  - oldbalanceDest
+  - newbalanceDest
