@@ -77,7 +77,8 @@ def parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, dict[
     parser.add_argument("--git-sha", default="unknown")
     parser.add_argument("--config-hash", default="unknown")
     parser.add_argument("--data-run-id", default="unknown")
-    parser.add_argument("--experiment-name", default=None, help="MLflow run name prefix.")
+    parser.add_argument("--experiment-name", default="unknown",
+                        help="experiment.name from the experiment YAML; tagged on every run.")
     parser.add_argument("--expected-xgboost-version", default=None,
                         help="Fail fast if the installed XGBoost differs (local vs container drift).")
     args, unknown = parser.parse_known_args(argv)
@@ -159,6 +160,7 @@ def log_run(
         config_hash=args.config_hash,
         data_run_id=args.data_run_id,
         mode=args.mode,
+        experiment_name=args.experiment_name,
         image_uri=os.environ.get("TRAINING_IMAGE_URI", "local"),
         pipeline_execution_arn=os.environ.get("PIPELINE_EXECUTION_ARN", ""),
         image_digest=os.environ.get("TRAINING_IMAGE_DIGEST", "local"),

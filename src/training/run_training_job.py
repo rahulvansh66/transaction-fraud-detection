@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from src.config_loader.config_loader import load_env_config, load_yaml, merge_configs
+from src.training.experiment_config import validate_experiment
 from src.training.lineage import config_hash, current_git_sha, full_git_sha
 from src.training.sagemaker_jobs import validate_data_run_id
 
@@ -81,7 +82,9 @@ def resolve_config(kind: str, experiment: Path | None) -> dict[str, Any]:
         return merge_configs(base, load_yaml(PRODUCTION_CONFIG))
     if experiment is None:
         raise SystemExit("--experiment is required for --kind manual and hpo.")
-    return load_yaml(experiment)
+    cfg = load_yaml(experiment)
+    validate_experiment(cfg, kind)
+    return cfg
 
 
 def build_hyperparameters(cfg: dict[str, Any], kind: str) -> dict[str, Any]:
@@ -119,6 +122,9 @@ def build_control_args(cfg: dict[str, Any], kind: str, env: str, git_sha: str, d
     version = cfg.get("runtime", {}).get("xgboost_version")
     if version:
         control["expected-xgboost-version"] = version
+    experiment_name = cfg.get("experiment", {}).get("name")
+    if experiment_name:
+        control["experiment-name"] = experiment_name
     return control
 
 
@@ -249,7 +255,8 @@ def run_sagemaker(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: st
         configure_mlflow_tracking(args.env)
         tuning_name = hpo_tuner.tuning_job_name(config_hash(cfg), stamp)
         with mlflow.start_run(run_name=tuning_name) as parent:
-            mlflow.set_tags({"mode": "hpo", "git_sha": git_sha, "config_hash": config_hash(cfg),
+            mlflow.set_tags({"mode": "hpo", "experiment_name": cfg["experiment"]["name"],
+                             "git_sha": git_sha, "config_hash": config_hash(cfg),
                              "data_run_id": data_run_id, "tuning_job_name": tuning_name,
                              "env": args.env, "git_sha_full": environment["GIT_SHA_FULL"],
                              "source_uri": source_uri,

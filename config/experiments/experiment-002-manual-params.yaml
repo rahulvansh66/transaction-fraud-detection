@@ -1,0 +1,32 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
+# Experiment 002 (manual): one deliberate, fixed parameter set, run with
+# `--kind manual`. Its result decides where the next experiment's search-space file (experiment-003-search-space.yaml) searches.
+# One file = one point; to try another point, copy this to the next experiment number
+# instead of editing it after it has run. Self-contained on purpose: when copying, diff
+# against the previous file so seed, eval_metric and data.run_id only change deliberately.
+# Environment values (buckets, ARNs) live in config/env/.
+experiment:
+  name: exp-002-manual-params
+  mode: manual
+data:
+  run_id: synthetic-v0    # immutable, explicit folder under processed/ (never "latest")
+runtime:
+  xgboost_version: "1.7.4"          # must equal the container's XGBoost; train.py fails on mismatch
+  sagemaker_framework_version: "1.7-1"
+static_params:
+  objective: binary:logistic
+  eval_metric: aucpr
+  tree_method: hist
+  eta: 0.1
+  num_round: 200
+  early_stopping_rounds: 20
+  seed: 42
+  min_precision: 0.9       # precision floor used to pick the decision threshold on validation
+# The point under test. Keys here must not repeat static_params.
+manual_params:
+  max_depth: 8
+  min_child_weight: 3
+  gamma: 1

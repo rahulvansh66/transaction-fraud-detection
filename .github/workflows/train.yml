@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       experiment:
-        description: "config/experiments/*.yaml (manual: uses manual_params, hpo: uses search_space)"
+        description: "config/experiments/*.yaml whose experiment.mode matches kind (e.g. experiment-002-manual-params.yaml for manual, experiment-003-search-space.yaml for hpo)"
         required: true
       data_run_id:
         description: "immutable processed/<run_id> (never 'latest')"
