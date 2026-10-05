@@ -60,6 +60,68 @@ data "aws_iam_policy_document" "sagemaker_data_access" {
   }
 }
 
+###############################################################################
+# Write-once protection for run data
+#
+# Versioning is already enabled on the bucket (legacy project), so an overwrite
+# keeps the old bytes recoverable. These statements add the guarantees that
+# versioning alone does not give. The bucket had no policy when this was added,
+# so this resource does not replace anything; if the legacy project ever adds
+# one, merge the statements instead of applying both.
+#
+# Not enforced at bucket level: Spark's part files under processed/<run_id>/
+# {train,val,test}. Spark (S3A) writes through multipart uploads without
+# If-None-Match, so a deny there would break the job. Those are protected by
+# errorifexists in spark_job.py plus versioning.
+###############################################################################
+
+data "aws_iam_policy_document" "data_bucket_protection" {
+  statement {
+    sid     = "DenyPermanentDeleteOfRunData"
+    effect  = "Deny"
+    actions = ["s3:DeleteObjectVersion"]
+    resources = [
+      "${data.aws_s3_bucket.data.arn}/raw/*",
+      "${data.aws_s3_bucket.data.arn}/processed/*",
+      "${data.aws_s3_bucket.data.arn}/models/*",
+    ]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+  }
+
+  # The launchers write the run marker, config, deps zip, raw manifest and the
+  # training source bundle with IfNoneMatch="*"; this makes S3 refuse any write
+  # to those keys that does not carry the header, so the guard cannot be skipped.
+  statement {
+    sid     = "RequireWriteOnceForLaunchArtifacts"
+    effect  = "Deny"
+    actions = ["s3:PutObject"]
+    resources = [
+      "${data.aws_s3_bucket.data.arn}/processed/*/config/*",
+      "${data.aws_s3_bucket.data.arn}/models/code/*",
+    ]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Null"
+      variable = "s3:if-none-match"
+      values   = ["true"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "data_protection" {
+  bucket = data.aws_s3_bucket.data.id
+  policy = data.aws_iam_policy_document.data_bucket_protection.json
+}
+
 resource "aws_iam_role_policy" "sagemaker_data_access" {
   name   = "fraud-detection-${var.environment}-data-bucket-access"
   role   = var.sagemaker_execution_role_name

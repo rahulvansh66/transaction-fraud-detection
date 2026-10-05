@@ -24,6 +24,12 @@ variable "github_subject_patterns" {
   default     = ["*"]
 }
 
+variable "sagemaker_image_registry_account" {
+  description = "AWS-owned account that hosts the SageMaker built-in algorithm images in var.aws_region (683313688378 for us-east-1)."
+  type        = string
+  default     = "683313688378"
+}
+
 variable "create_github_oidc_provider" {
   description = "Set false if the account already has the token.actions.githubusercontent.com provider."
   type        = bool
@@ -137,6 +143,13 @@ data "aws_iam_policy_document" "github_actions" {
     sid       = "ReadDagsHubSecret"
     actions   = ["secretsmanager:GetSecretValue"]
     resources = [aws_secretsmanager_secret.dagshub_mlflow.arn]
+  }
+
+  # run_training_job.py resolves the training image tag to its digest for lineage.
+  statement {
+    sid       = "ResolveTrainingImageDigest"
+    actions   = ["ecr:BatchGetImage"]
+    resources = ["arn:aws:ecr:${var.aws_region}:${var.sagemaker_image_registry_account}:repository/sagemaker-*"]
   }
 }
 
