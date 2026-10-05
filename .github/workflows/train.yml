@@ -45,7 +45,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-      - run: uv sync
+      - run: uv sync --locked
       - name: Load MLflow credentials
         run: |
           secret=$(aws secretsmanager get-secret-value --secret-id fraud-detection/dev/dagshub-mlflow --query SecretString --output text)

@@ -5,8 +5,8 @@ description: Decides whether a new ML experiment should be a manual run, an AMT 
 
 # ML experimentation workflow
 
-Source: [DOCS/ok/production_ml_experimentation_git_sagemaker_amt_mlflow.md](../../../DOCS/ok/production_ml_experimentation_git_sagemaker_amt_mlflow.md)
-and [DOCS/ok/best of his repo and our hpo approach.md](../../../DOCS/ok/best%20of%20his%20repo%20and%20our%20hpo%20approach.md).
+Source: [DOCS/my-notes/production_ml_experimentation_git_sagemaker_amt_mlflow.md](../../../DOCS/my-notes/production_ml_experimentation_git_sagemaker_amt_mlflow.md)
+and [DOCS/my-notes/best of his repo and our hpo approach.md](../../../DOCS/my-notes/best%20of%20his%20repo%20and%20our%20hpo%20approach.md).
 Read those for the full diagrams; this skill is the decision procedure.
 
 ## The core mental model

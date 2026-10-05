@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from src.config_loader.config_loader import load_env_config, load_yaml, merge_configs
-from src.training.lineage import config_hash, current_git_sha
+from src.training.lineage import config_hash, current_git_sha, full_git_sha
 from src.training.sagemaker_jobs import validate_data_run_id
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,8 @@ def resolve_config(kind: str, experiment: Path | None) -> dict[str, Any]:
 
     Raises:
         SystemExit: If no experiment is given for a non-production kind.
+        ValueError: If the experiment file does not match ``kind`` (see
+            :func:`src.training.experiment_config.validate_experiment`).
     """
     if kind == "production":
         base = load_yaml(experiment) if experiment else {}
@@ -229,6 +231,9 @@ def run_sagemaker(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: st
     stamp = time.strftime("%m%d%H%M%S")
     name = f"fraud-{args.kind}-{config_hash(cfg)[:8]}-{stamp}"
     environment = {"TRAINING_IMAGE_URI": image_uri, "TRAINING_JOB_NAME": name,
+                   "TRAINING_IMAGE_DIGEST": sagemaker_jobs.resolve_image_digest(
+                       session.client("ecr"), image_uri),
+                   "TRAINING_SOURCE_URI": source_uri, "GIT_SHA_FULL": full_git_sha(),
                    "DAGSHUB_SECRET_ID": f"fraud-detection/{args.env}/dagshub-mlflow"}
     request = sagemaker_jobs.build_training_job_request(
         job_name=name, image_uri=image_uri,
@@ -245,7 +250,10 @@ def run_sagemaker(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: st
         tuning_name = hpo_tuner.tuning_job_name(config_hash(cfg), stamp)
         with mlflow.start_run(run_name=tuning_name) as parent:
             mlflow.set_tags({"mode": "hpo", "git_sha": git_sha, "config_hash": config_hash(cfg),
-                             "data_run_id": data_run_id, "tuning_job_name": tuning_name})
+                             "data_run_id": data_run_id, "tuning_job_name": tuning_name,
+                             "env": args.env, "git_sha_full": environment["GIT_SHA_FULL"],
+                             "source_uri": source_uri,
+                             "image_digest": environment["TRAINING_IMAGE_DIGEST"]})
             client.create_hyper_parameter_tuning_job(
                 **hpo_tuner.build_tuning_request(tuning_name, cfg, request, parent.info.run_id))
             logger.info("step=launch status=submitted kind=hpo tuning_job=%s parent_run_id=%s",

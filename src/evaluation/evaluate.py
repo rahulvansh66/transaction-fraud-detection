@@ -110,20 +110,45 @@ def resolve_model_uri(client: MlflowClient, run_id: str) -> str:
     return f"models:/{models[0].model_id}"
 
 
-def score(model_uri: str, x_test: Any, y_test: Any, threshold: float) -> dict[str, float]:
+def best_iteration_of(run_params: dict[str, str]) -> int | None:
+    """Reads the early-stopping round that training logged for a run.
+
+    Args:
+        run_params: ``run.data.params`` of the training run.
+
+    Returns:
+        The best iteration, or ``None`` for runs logged before this param existed.
+    """
+    value = run_params.get("best_iteration")
+    return int(value) if value not in (None, "None", "") else None
+
+
+def score(
+    model_uri: str, x_test: Any, y_test: Any, threshold: float, best_iteration: int | None = None
+) -> dict[str, float]:
     """Loads a logged XGBoost model and computes test metrics.
+
+    Scores with the same trees training used when it chose ``threshold``: the booster keeps
+    every boosting round, so predicting without a range would use trees past the early-stopping
+    point and make the validation threshold inconsistent with the test scores.
 
     Args:
         model_uri: MLflow model URI.
         x_test: Test features.
         y_test: Test labels.
         threshold: Decision threshold chosen on validation.
+        best_iteration: Early-stopping round from the training run. ``None`` scores with all trees.
 
     Returns:
         Metrics from :func:`compute_metrics`.
     """
     booster = mlflow.xgboost.load_model(model_uri)
-    return compute_metrics(y_test, booster.predict(xgb.DMatrix(x_test)), threshold)
+    if best_iteration is None:
+        logger.warning("step=evaluate status=no_best_iteration model_uri=%s scoring_all_trees=true", model_uri)
+        scores = booster.predict(xgb.DMatrix(x_test))
+    else:
+        scores = booster.predict(xgb.DMatrix(x_test), iteration_range=(0, best_iteration + 1))
+    return compute_metrics(y_test, scores, threshold)
 
 
 def production_report(
@@ -145,8 +170,9 @@ def production_report(
     except MlflowException:
         logger.warning("step=evaluate status=no_production_model model=%s", gate["model_name"])
         return None
-    threshold = client.get_run(version.run_id).data.metrics["threshold"]
-    return score(f"models:/{gate['model_name']}@{gate['production_alias']}", x_test, y_test, threshold)
+    prod_run = client.get_run(version.run_id)
+    return score(f"models:/{gate['model_name']}@{gate['production_alias']}", x_test, y_test,
+                 prod_run.data.metrics["threshold"], best_iteration_of(prod_run.data.params))
 
 
 def evaluate(run_id: str, gate: dict[str, Any], test_dir: Path, allow_rescore: bool = False) -> bool:
@@ -173,7 +199,8 @@ def evaluate(run_id: str, gate: dict[str, Any], test_dir: Path, allow_rescore: b
     x_test, y_test = load_split(test_dir, schema["features"], schema["label"])
 
     model_uri = resolve_model_uri(client, run_id)
-    report = score(model_uri, x_test, y_test, run.data.metrics["threshold"])
+    report = score(model_uri, x_test, y_test, run.data.metrics["threshold"],
+                   best_iteration_of(run.data.params))
     prod = production_report(client, gate, x_test, y_test)
     passed, reasons = apply_gate(report, gate, prod)
 

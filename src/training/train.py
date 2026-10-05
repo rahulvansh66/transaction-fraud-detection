@@ -33,7 +33,7 @@ from src.mlflow_tracking.mlflow_tracking import (
     fetch_dagshub_secret,
     set_lineage_tags,
 )
-from src.training.data import load_split, read_metadata
+from src.training.data import directory_digest, load_split, read_metadata
 from src.training.model import build_params, fit
 
 logger = logging.getLogger(__name__)
@@ -122,10 +122,13 @@ def log_run(
     metrics: dict[str, float],
     features: list[str],
     label: str,
+    x_train: Any,
     x_val: Any,
     val_scores: Any,
     args: argparse.Namespace,
     train_dir: str,
+    val_dir: str,
+    meta: dict[str, Any],
     job_name: str,
 ) -> str:
     """Writes params, metrics, lineage tags and artifacts to the active MLflow run.
@@ -137,10 +140,14 @@ def log_run(
         metrics: Metrics to log (already prefixed).
         features: Ordered feature names.
         label: Label column name.
+        x_train: Training features (sampled for the logged run input).
         x_val: Validation features (for the model input example).
         val_scores: Validation predictions (for the model signature).
         args: Control arguments.
-        train_dir: Training data location logged as the run input.
+        train_dir: Training split location, logged as a run input and hashed.
+        val_dir: Validation split location, logged as a run input and hashed.
+        meta: Preprocessing ``metadata.json`` content, attached so the run carries the
+            split boundaries, class balance and preprocessing config hash.
         job_name: SageMaker job name or local run name.
 
     Returns:
@@ -154,6 +161,12 @@ def log_run(
         mode=args.mode,
         image_uri=os.environ.get("TRAINING_IMAGE_URI", "local"),
         pipeline_execution_arn=os.environ.get("PIPELINE_EXECUTION_ARN", ""),
+        image_digest=os.environ.get("TRAINING_IMAGE_DIGEST", "local"),
+        source_uri=os.environ.get("TRAINING_SOURCE_URI", "local"),
+        git_sha_full=os.environ.get("GIT_SHA_FULL", "unknown"),
+        env=args.env,
+        train_data_sha256=directory_digest(train_dir),
+        val_data_sha256=directory_digest(val_dir),
         python_version=platform.python_version(),
         xgboost_version=xgb.__version__,
         job_name=job_name,
@@ -164,9 +177,14 @@ def log_run(
     mlflow.log_param("best_iteration", booster.best_iteration)
     mlflow.log_metrics(metrics)
     mlflow.log_input(
-        mlflow.data.from_pandas(x_val.head(1000), source=str(train_dir), name="processed-val"),
+        mlflow.data.from_pandas(x_train.head(1000), source=str(train_dir), name="processed-train"),
+        context="training",
+    )
+    mlflow.log_input(
+        mlflow.data.from_pandas(x_val.head(1000), source=str(val_dir), name="processed-val"),
         context="validation",
     )
+    mlflow.log_dict(meta, "data_metadata.json")
     mlflow.log_dict(resolved, "resolved_config.json")
     mlflow.log_dict({"features": features, "label": label}, "features.json")
     mlflow.log_text(pip_freeze(), "pip_freeze.txt")
@@ -229,8 +247,8 @@ def main(argv: list[str] | None = None) -> None:
     resolved = {**hp, "scale_pos_weight": params["scale_pos_weight"], "features": features}
     parent = os.environ.get(PARENT_RUN_ENV)
     with mlflow.start_run(run_name=job_name, parent_run_id=parent, nested=bool(parent)):
-        run_id = log_run(booster, params, resolved, metrics, features, label, x_val,
-                         val_scores, args, train_dir, job_name)
+        run_id = log_run(booster, params, resolved, metrics, features, label, x_train, x_val,
+                         val_scores, args, train_dir, val_dir, meta, job_name)
 
     out = Path(model_dir)
     out.mkdir(parents=True, exist_ok=True)

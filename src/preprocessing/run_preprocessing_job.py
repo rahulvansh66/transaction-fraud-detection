@@ -16,6 +16,7 @@ Run from the repository root: ``python -m src.preprocessing.run_preprocessing_jo
 import argparse
 import hashlib
 import io
+import json
 import logging
 import subprocess
 import zipfile
@@ -39,6 +40,7 @@ PREPROCESSING_DIR = Path(__file__).resolve().parent
 SPARK_JOB_FILE = PREPROCESSING_DIR / "spark_job.py"
 DEPS_MODULES: tuple[str, ...] = ("features.py", "lineage.py")
 DEPS_ZIP_NAME = "preprocessing_deps.zip"
+RAW_MANIFEST_NAME = "raw_manifest.json"
 DEFAULT_CONFIG = REPO_ROOT / "config" / "preprocessing" / "preprocessing.yaml"
 CONFIG_LOCAL_PATH = "/opt/ml/processing/input/config"
 DEPS_LOCAL_PATH = "/opt/ml/processing/input/deps"
@@ -166,6 +168,56 @@ def stage_artifacts(
     return config_key, deps_key
 
 
+def build_raw_manifest(s3_client: Any, bucket: str, prefix: str) -> dict[str, Any]:
+    """Lists the raw input objects (key, size, ETag) so the run records the exact bytes it read.
+
+    ``raw/<data_version>/`` is addressed by name only, so without this a re-uploaded or
+    modified file would be invisible in the lineage.
+
+    Args:
+        s3_client: A boto3 S3 client.
+        bucket: Bucket name.
+        prefix: Raw input prefix, e.g. ``raw/data-v0/``.
+
+    Returns:
+        ``{"prefix", "object_count", "total_bytes", "objects"}`` with objects sorted by key.
+
+    Raises:
+        SystemExit: If the prefix holds no objects.
+    """
+    objects = [
+        {"key": obj["Key"], "size": obj["Size"], "etag": obj["ETag"].strip('"')}
+        for page in s3_client.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix)
+        for obj in page.get("Contents", [])
+        if not obj["Key"].endswith("/")
+    ]
+    if not objects:
+        raise SystemExit(f"no raw input objects under s3://{bucket}/{prefix}")
+    objects.sort(key=lambda o: o["key"])
+    return {"prefix": prefix, "object_count": len(objects),
+            "total_bytes": sum(o["size"] for o in objects), "objects": objects}
+
+
+def stage_raw_manifest(s3_client: Any, bucket: str, out_prefix: str, manifest: dict[str, Any]) -> str:
+    """Writes the raw-input manifest under the run prefix and returns its content hash.
+
+    Args:
+        s3_client: A boto3 S3 client.
+        bucket: Bucket name.
+        out_prefix: Run prefix, e.g. ``processed/<run_id>/``.
+        manifest: Output of :func:`build_raw_manifest`.
+
+    Returns:
+        First 12 hex characters of the manifest's SHA-256, for log correlation.
+
+    Raises:
+        SystemExit: If the manifest already exists for this run.
+    """
+    body = json.dumps(manifest, sort_keys=True, indent=2).encode()
+    put_immutable(s3_client, bucket, f"{out_prefix}config/{RAW_MANIFEST_NAME}", body)
+    return hashlib.sha256(body).hexdigest()[:12]
+
+
 def s3_input(name: str, uri: str, local_path: str) -> ProcessingInput:
     """Builds a file-mode S3 ``ProcessingInput``.
 
@@ -259,7 +311,12 @@ def main() -> None:
 
     boto_session = boto3.Session(region_name=env["aws"]["region"])
     out_prefix = f"processed/{run_id}/"
-    config_key, deps_key = stage_artifacts(boto_session.client("s3"), bucket, out_prefix, args.config)
+    s3 = boto_session.client("s3")
+    config_key, deps_key = stage_artifacts(s3, bucket, out_prefix, args.config)
+    manifest = build_raw_manifest(s3, bucket, f"raw/{args.data_version}/")
+    manifest_hash = stage_raw_manifest(s3, bucket, out_prefix, manifest)
+    logger.info("step=launch status=raw_manifest_staged objects=%d total_bytes=%d manifest_sha256=%s",
+                manifest["object_count"], manifest["total_bytes"], manifest_hash)
 
     processor = build_processor(boto_session, env, proc, bucket)
     processor.run(

@@ -2,6 +2,9 @@
 # Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
 # =======================================================================
 
-mlflow>=2.14
-python-dotenv>=1.0
-pyyaml>=6.0
+# Pinned to what the sagemaker-xgboost:1.7-1 container (Python 3.9) resolved in the
+# last verified run (see that run's pip_freeze.txt artifact). Do not use ranges here:
+# a floating pin makes the same source bundle train against different libraries.
+mlflow==3.1.4
+python-dotenv==1.2.1
+pyyaml==6.0.3

@@ -16,9 +16,21 @@ from pathlib import Path
 
 from src.preprocessing.lineage import build_run_id, config_hash
 
-__all__ = ["build_run_id", "config_hash", "current_git_sha"]
+__all__ = ["build_run_id", "config_hash", "current_git_sha", "full_git_sha"]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def full_git_sha() -> str:
+    """Returns the full 40-character commit sha (the short sha can become ambiguous).
+
+    Returns:
+        The full commit identifier, or ``"unknown"`` if git is unavailable.
+    """
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return "unknown"
 
 
 def current_git_sha() -> str:

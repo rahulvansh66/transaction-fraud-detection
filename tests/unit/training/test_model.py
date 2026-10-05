@@ -11,7 +11,7 @@ import pandas as pd
 import xgboost as xgb
 
 from src.evaluation.metrics import compute_metrics
-from src.training.data import load_split
+from src.training.data import directory_digest, load_split
 from src.training.model import build_params, fit
 from src.training.run_training_job import build_train_args
 from src.training.train import coerce, parse_args
@@ -64,6 +64,22 @@ def test_load_split_selects_columns(tmp_path: Path) -> None:
     pd.concat([x, pd.Series(y, name="isFraud")], axis=1).to_parquet(tmp_path / "part-0.parquet")
     xs, ys = load_split(tmp_path, ["a", "b"], "isFraud")
     assert list(xs.columns) == ["a", "b"] and len(ys) == 10
+
+
+def test_directory_digest_tracks_bytes_and_names(tmp_path: Path) -> None:
+    """The digest is stable for identical files and changes with content or file name."""
+    x, y = synthetic(10)
+    frame = pd.concat([x, pd.Series(y, name="isFraud")], axis=1)
+    first, second = tmp_path / "a", tmp_path / "b"
+    for folder in (first, second):
+        folder.mkdir()
+        frame.to_parquet(folder / "part-0.parquet")
+    assert directory_digest(first) == directory_digest(second)
+    frame.assign(a=frame["a"] + 1).to_parquet(second / "part-0.parquet")
+    assert directory_digest(first) != directory_digest(second)
+    before = directory_digest(first)
+    (first / "part-0.parquet").rename(first / "part-1.parquet")
+    assert directory_digest(first) != before
 
 
 def test_launcher_args_carry_lineage(tmp_path: Path) -> None:

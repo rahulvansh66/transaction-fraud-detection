@@ -11,6 +11,7 @@ import tarfile
 from pathlib import Path
 
 import pytest
+from botocore.exceptions import ClientError
 
 from src.training import hpo_tuner, sagemaker_jobs
 
@@ -83,6 +84,50 @@ def test_source_tar_is_deterministic_and_complete() -> None:
     with tarfile.open(fileobj=io.BytesIO(gzip.decompress(first))) as tar:
         names = set(tar.getnames())
     assert {"entrypoint.py", "requirements.txt", "src/training/train.py", "config/env/dev.yaml"} <= names
+
+
+class _FakeEcr:
+    """ECR stub returning a fixed digest or raising a configured error."""
+
+    def __init__(self, error: bool = False) -> None:
+        """Configures whether ``batch_get_image`` fails.
+
+        Args:
+            error: If true, raise ``ClientError`` (e.g. no cross-account permission).
+        """
+        self.error, self.calls = error, []
+
+    def batch_get_image(self, **kwargs: object) -> dict:
+        """Returns a digest response, or raises when configured to fail."""
+        self.calls.append(kwargs)
+        if self.error:
+            raise ClientError({"Error": {"Code": "AccessDeniedException", "Message": "x"}}, "BatchGetImage")
+        return {"images": [{"imageId": {"imageDigest": "sha256:abc"}}]}
+
+
+XGB_IMAGE = "683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-xgboost:1.7-1"
+
+
+def test_image_digest_resolved_from_tagged_uri() -> None:
+    """A tagged ECR URI is split into registry, repo and tag, and the digest is returned."""
+    ecr = _FakeEcr()
+    assert sagemaker_jobs.resolve_image_digest(ecr, XGB_IMAGE) == "sha256:abc"
+    assert ecr.calls[0]["registryId"] == "683313688378"
+    assert ecr.calls[0]["repositoryName"] == "sagemaker-xgboost"
+    assert ecr.calls[0]["imageIds"] == [{"imageTag": "1.7-1"}]
+
+
+def test_image_digest_failure_never_blocks_launch() -> None:
+    """Permission errors and non-ECR URIs return the sentinel instead of raising."""
+    assert sagemaker_jobs.resolve_image_digest(_FakeEcr(error=True), XGB_IMAGE) == sagemaker_jobs.UNRESOLVED_DIGEST
+    assert sagemaker_jobs.resolve_image_digest(_FakeEcr(), "img") == sagemaker_jobs.UNRESOLVED_DIGEST
+
+
+def test_requirements_are_exactly_pinned() -> None:
+    """The container requirements must be == pins, never ranges, so the bundle is reproducible."""
+    text = Path(sagemaker_jobs.REPO_ROOT, sagemaker_jobs.REQUIREMENTS_FILE).read_text(encoding="utf-8")
+    lines = [line.strip() for line in text.splitlines() if line.strip() and not line.startswith("#")]
+    assert lines and all("==" in line for line in lines), lines
 
 
 def test_train_never_reads_test_split() -> None:

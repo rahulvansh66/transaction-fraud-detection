@@ -5,9 +5,9 @@ description: Checklist for making a training/pipeline run traceable and reproduc
 
 # ML lineage and reproducibility
 
-Source: [DOCS/ok/mlflow-and-reproducibility.md](../../../DOCS/ok/mlflow-and-reproducibility.md)
+Source: [DOCS/my-notes/mlflow-and-reproducibility.md](../../../DOCS/my-notes/mlflow-and-reproducibility.md)
 (current gaps, kept up to date there) and
-[DOCS/ok/production_ml_experimentation_git_sagemaker_amt_mlflow.md](../../../DOCS/ok/production_ml_experimentation_git_sagemaker_amt_mlflow.md)
+[DOCS/my-notes/production_ml_experimentation_git_sagemaker_amt_mlflow.md](../../../DOCS/my-notes/production_ml_experimentation_git_sagemaker_amt_mlflow.md)
 §15–16 (the target lineage model). This skill is the checklist version —
 check the source doc for current wiring status before assuming something is
 already done.
@@ -79,7 +79,7 @@ This repo has not yet settled whether **MLflow Model Registry** or
 (`None → Staging → Production`). Don't silently pick one while implementing
 something else — if you're wiring registration/promotion logic, treat this
 as a decision to surface, not to make implicitly. Check
-[DOCS/ok/mlflow-and-reproducibility.md](../../../DOCS/ok/mlflow-and-reproducibility.md)
+[DOCS/my-notes/mlflow-and-reproducibility.md](../../../DOCS/my-notes/mlflow-and-reproducibility.md)
 §4 for the current state before proceeding.
 
 ## Where to look next

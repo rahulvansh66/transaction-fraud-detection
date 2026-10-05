@@ -16,11 +16,12 @@ import gzip
 import hashlib
 import io
 import logging
+import re
 import tarfile
 from pathlib import Path
 from typing import Any
 
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,40 @@ ENTRY_POINT_SOURCE = "from src.training.train import main\n\nif __name__ == \"__
 FIXED_MTIME = 0
 PRECONDITION_ERROR_CODES = frozenset({"PreconditionFailed", "ConditionalRequestConflict"})
 FORBIDDEN_RUN_IDS = frozenset({"", "latest", "current"})
+UNRESOLVED_DIGEST = "unresolved"
+ECR_IMAGE_URI = re.compile(
+    r"^(?P<account>\d+)\.dkr\.ecr\.[\w-]+\.amazonaws\.com/(?P<repo>[^:@]+):(?P<tag>[^@]+)$"
+)
+
+
+def resolve_image_digest(ecr_client: Any, image_uri: str) -> str:
+    """Resolves a tagged ECR image URI to its immutable content digest.
+
+    Tags such as ``1.7-1`` can be re-pushed, so the digest is what actually pins the
+    environment. Best-effort: lineage must not block a launch, so any failure (a URI that
+    is not a tagged ECR image, or missing ``ecr:BatchGetImage`` on the AWS-owned repo)
+    is logged and returns a sentinel instead of raising.
+
+    Args:
+        ecr_client: A boto3 ECR client for the image's region.
+        image_uri: Tagged ECR image URI from ``image_uris.retrieve``.
+
+    Returns:
+        The ``sha256:...`` digest, or :data:`UNRESOLVED_DIGEST`.
+    """
+    match = ECR_IMAGE_URI.match(image_uri)
+    if not match:
+        logger.warning("step=launch status=image_digest_skipped reason=not_a_tagged_ecr_uri uri=%s", image_uri)
+        return UNRESOLVED_DIGEST
+    try:
+        response = ecr_client.batch_get_image(
+            registryId=match["account"], repositoryName=match["repo"],
+            imageIds=[{"imageTag": match["tag"]}],
+        )
+        return response["images"][0]["imageId"]["imageDigest"]
+    except (ClientError, BotoCoreError, KeyError, IndexError):
+        logger.warning("step=launch status=image_digest_unresolved uri=%s", image_uri, exc_info=True)
+        return UNRESOLVED_DIGEST
 
 
 def validate_data_run_id(run_id: str) -> str:

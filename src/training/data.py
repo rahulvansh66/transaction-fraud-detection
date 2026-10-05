@@ -2,10 +2,11 @@
 # Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
 # =======================================================================
 
-"""Data loading for training: reads processed parquet splits and their metadata."""
+"""Data loading for training: reads processed parquet splits, their metadata and a content digest."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -17,6 +18,36 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 METADATA_FILE = "metadata.json"
+DIGEST_CHUNK_BYTES = 1 << 20
+
+
+def directory_digest(path: str | Path) -> str:
+    """Hashes the exact bytes of a split so a run records which data it really read.
+
+    Hashes raw file bytes (not a DataFrame), so the digest does not depend on the pandas
+    version and cannot be fooled by a sample. Files are visited in sorted relative-path
+    order and each name is hashed with its content, so renames and reordering change it.
+
+    Args:
+        path: A parquet file or a directory of part files.
+
+    Returns:
+        Hex SHA-256 digest.
+
+    Raises:
+        FileNotFoundError: If ``path`` does not exist.
+    """
+    root = Path(path)
+    if not root.exists():
+        raise FileNotFoundError(f"cannot digest missing path: {root}")
+    files = [root] if root.is_file() else sorted(p for p in root.rglob("*") if p.is_file())
+    digest = hashlib.sha256()
+    for file in files:
+        digest.update(file.name.encode() if root.is_file() else file.relative_to(root).as_posix().encode())
+        with file.open("rb") as handle:
+            while chunk := handle.read(DIGEST_CHUNK_BYTES):
+                digest.update(chunk)
+    return digest.hexdigest()
 
 
 def load_split(

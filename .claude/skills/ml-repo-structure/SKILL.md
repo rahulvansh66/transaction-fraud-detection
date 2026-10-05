@@ -5,8 +5,8 @@ description: Defines where code, configs, docker, infra, and CI files belong in 
 
 # ML repo structure
 
-Source: [DOCS/ok/production_ml_experimentation_git_sagemaker_amt_mlflow.md](../../../DOCS/ok/production_ml_experimentation_git_sagemaker_amt_mlflow.md)
-(§4, §16.1) and [DOCS/ok/best of his repo and our hpo approach.md](../../../DOCS/ok/best%20of%20his%20repo%20and%20our%20hpo%20approach.md)
+Source: [DOCS/my-notes/production_ml_experimentation_git_sagemaker_amt_mlflow.md](../../../DOCS/my-notes/production_ml_experimentation_git_sagemaker_amt_mlflow.md)
+(§4, §16.1) and [DOCS/my-notes/best of his repo and our hpo approach.md](../../../DOCS/my-notes/best%20of%20his%20repo%20and%20our%20hpo%20approach.md)
 (§13–15). Read those for the full architecture; this skill just enforces the
 structural rules day to day.
 
