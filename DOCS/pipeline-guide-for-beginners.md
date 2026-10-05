@@ -69,7 +69,7 @@ Five words you'll see everywhere in this doc:
 ## 4. Training — local, SageMaker manual, or SageMaker HPO
 
 - **Code:** [src/training/train.py](../src/training/train.py) (the job entry point — the only module that reads SageMaker's `SM_CHANNEL_*` env vars; never touches the test split), [data.py](../src/training/data.py), [model.py](../src/training/model.py) (pure XGBoost param building/fitting, no I/O), [sagemaker_jobs.py](../src/training/sagemaker_jobs.py) (builds the boto3 `CreateTrainingJob` request), [hpo_tuner.py](../src/training/hpo_tuner.py) (builds the AMT tuning request), [run_training_job.py](../src/training/run_training_job.py) (the CLI launcher: `--mode {local,sagemaker} --kind {manual,hpo,production}`).
-- **Config:** [config/experiments/experiment-001.yaml](../config/experiments/experiment-001.yaml) — `data.run_id`, `runtime.xgboost_version` (must match the SageMaker container), `static_params`, `manual_params`, `search_space`, `tuning`.
+- **Config:** [config/experiments/experiment-001.yaml](../config/experiments/experiment-001.yaml) — `data.run_id`, `runtime.xgboost_version` (must match the SageMaker container), `params` (scalars, lists, ranges), `tuning`.
 - **Where to look:**
   - SageMaker console → **Training jobs** (for `manual`/`production`) or **Hyperparameter tuning jobs** (for `hpo`).
   - CloudWatch → log group `/aws/sagemaker/TrainingJobs`, one stream per job — this is where you read the actual Python traceback if a job fails.
@@ -194,8 +194,10 @@ Preprocessing doesn't rerun. You point a new training run at the same immutable 
 **What you do**
 1. Copy [experiment-001.yaml](config/experiments/experiment-001.yaml) to a new file, for example `experiment-002.yaml`.
 2. Change only the hyperparameters:
-   - `manual_params` for a single deliberate run (`--kind manual`).
-   - `search_space` and `tuning` for an AMT search (`--kind hpo`).
+   - all-scalar `params` for a single deliberate run.
+   - a list (`max_depth: [2, 5, 7]`) with `tuning.strategy: grid` to try every value once.
+   - ranges (`{type, min, max}`) with `tuning.strategy: bayesian` (and `max_jobs`) for an AMT search.
+   Always use `--kind experiment`; the file's `params` decide what runs.
 3. Keep `data.run_id` the same, or pass `data_run_id` when you trigger the [train workflow](.github/workflows/train.yml).
 4. Commit the config, then dispatch the workflow with `experiment=config/experiments/experiment-002.yaml`, `data_run_id=<same run_id>` and the `kind` you want.
 

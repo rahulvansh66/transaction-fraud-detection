@@ -24,7 +24,7 @@ uv run jupyter nbconvert --to notebook --execute notebooks/<name>.ipynb --output
 
 ## How to run a training job
 
-Hyperparameters and search ranges live in `config/experiments/*.yaml`, never in code or workflows. Each file has its own number and is self-contained and serves one kind: `experiment-002-manual-params.yaml` (`mode: manual`) holds one fixed point, and the next number, `experiment-003-search-space.yaml` (`mode: hpo`), holds the AMT ranges derived from it. The `mode` must match `--kind`, which is checked before any job is submitted. Never edit a file after it has produced runs; start the next number instead. Training reads an immutable processed data run (`processed/<run_id>/{train,val,test}` plus `metadata.json`), never `latest`.
+Hyperparameters live in `config/experiments/*.yaml`, never in code or workflows. Each file has its own number, is self-contained and asks one question through its `params:` block: a scalar is fixed, a list is a set of discrete values, and a `{type, min, max}` dict is a range. All scalars is one training job (`experiment-002-manual-params.yaml`); lists with `tuning.strategy: grid` try every value once (`experiment-004-depth-sensitivity.yaml`); ranges with `strategy: bayesian` run an AMT search (`experiment-003-search-space.yaml`). The strategy is always explicit for anything tunable (`grid`, `random` or `bayesian`), and grid supports lists only. The file is validated before any job is submitted. Never edit a file after it has produced runs; start the next number instead. Training reads an immutable processed data run (`processed/<run_id>/{train,val,test}` plus `metadata.json`), never `latest`.
 
 ### 1. Prerequisites
 - `uv sync`, and a `.env` with the DagsHub credentials (see `.env.example`) for local runs.
@@ -34,25 +34,29 @@ Hyperparameters and search ranges live in `config/experiments/*.yaml`, never in 
 ### 2. Run locally (no AWS)
 ```bash
 uv run python scripts/make_synthetic_splits.py   # optional: synthetic-v0 test data
-uv run python -m src.training.run_training_job --mode local --kind manual \
+uv run python -m src.training.run_training_job --mode local --kind experiment \
   --experiment config/experiments/experiment-002-manual-params.yaml
 ```
 Runs `train.py` as a subprocess and logs a run to DagsHub MLflow. The same seed reproduces the same metrics.
 
 ### 3. Run on SageMaker
-The git tree must be clean (or pass `--allow-dirty`).
+The git tree must be clean: commit first (`--allow-dirty` is for smoke tests only). Local mode runs single (all-scalar) experiments only.
 ```bash
-# One training job
-uv run python -m src.training.run_training_job --mode sagemaker --kind manual \
+# One training job (all-scalar params)
+uv run python -m src.training.run_training_job --mode sagemaker --kind experiment \
   --experiment config/experiments/experiment-002-manual-params.yaml --data-run-id <run_id>
 
-# Hyperparameter search (AMT); uses tuning.max_jobs / max_parallel_jobs from the YAML
-uv run python -m src.training.run_training_job --mode sagemaker --kind hpo \
+# Grid over lists (3 trials)
+uv run python -m src.training.run_training_job --mode sagemaker --kind experiment \
+  --experiment config/experiments/experiment-004-depth-sensitivity.yaml --data-run-id <run_id>
+
+# Bayesian search over ranges (AMT); uses the tuning block of the YAML
+uv run python -m src.training.run_training_job --mode sagemaker --kind experiment \
   --experiment config/experiments/experiment-003-search-space.yaml --data-run-id <run_id>
 ```
 Add `--no-wait` to submit and return, and `--output-json run.json` to save the MLflow run id for the next steps. Logs go to CloudWatch `/aws/sagemaker/TrainingJobs`.
 
-### 4. Pick a winner, evaluate, register (after an hpo run)
+### 4. Pick a winner, evaluate, register (after a grid/random/bayesian search)
 ```bash
 uv run python -m src.evaluation.select_winner --parent-run-id <parent_run_id>   # validation metrics only
 uv run python -m src.evaluation.evaluate --run-id <winner_run_id>               # test scored once, gate in config/evaluation/gate.yaml

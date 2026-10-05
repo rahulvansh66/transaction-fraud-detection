@@ -6,7 +6,7 @@
 
 This is the only module that knows about SageMaker (``SM_CHANNEL_*``, ``SM_MODEL_DIR``).
 Hyperparameters arrive as ``--key value`` CLI args (from AMT, or from the launcher for
-manual runs). It never reads the test split; test scoring belongs to ``evaluate.py``.
+single runs). It never reads the test split; test scoring belongs to ``evaluate.py``.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, dict[
     parser.add_argument("--val-dir", default=None)
     parser.add_argument("--model-dir", default=None)
     parser.add_argument("--env", default="dev")
-    parser.add_argument("--mode", default="manual", choices=["manual", "hpo", "production"])
+    parser.add_argument("--mode", default="single", choices=["single", "grid", "random", "bayesian", "production"])
     parser.add_argument("--git-sha", default="unknown")
     parser.add_argument("--config-hash", default="unknown")
     parser.add_argument("--data-run-id", default="unknown")

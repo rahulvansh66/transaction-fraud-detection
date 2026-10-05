@@ -5,21 +5,22 @@
 name: train
 # Hyperparameters live in config/experiments/*.yaml and config/production/model.yaml,
 # never here. This workflow only passes which config and which immutable data run to use.
-# kind: manual = one deliberate run of manual_params; hpo = AMT search over search_space;
-# production = retrain the approved config. Every kind is then evaluated on test and gated.
+# kind: experiment = the experiment file decides the run (all-scalar params = one training job;
+# lists/ranges with tuning.strategy = an AMT search); production = retrain the approved config.
+# A search is followed by select_winner; every run is then evaluated on test and gated.
 on:
   workflow_dispatch:
     inputs:
       experiment:
-        description: "config/experiments/*.yaml whose experiment.mode matches kind (e.g. experiment-002-manual-params.yaml for manual, experiment-003-search-space.yaml for hpo)"
+        description: "config/experiments/*.yaml (e.g. experiment-002-manual-params.yaml for one run, experiment-004-depth-sensitivity.yaml for a grid)"
         required: true
       data_run_id:
         description: "immutable processed/<run_id> (never 'latest')"
         required: true
       kind:
         type: choice
-        options: [manual, hpo, production]
-        default: manual
+        options: [experiment, production]
+        default: experiment
   # DISABLED until an approved config/production/model.yaml and the PRODUCTION_DATA_RUN_ID
   # repository variable exist. See DOCS/model-training/train-workflow-explained.md (3.2).
   # schedule:
@@ -57,9 +58,12 @@ jobs:
           uv run python -m src.training.run_training_job --mode sagemaker \
             --kind "$KIND" --experiment "$EXPERIMENT" --data-run-id "$DATA_RUN_ID" \
             --output-json run.json
-      - name: Select winner (hpo only)
-        if: env.KIND == 'hpo'
+      - name: Select winner (searches only)
         run: |
+          if ! jq -e .parent_run_id run.json > /dev/null; then
+            echo "single run, no winner selection needed"
+            exit 0
+          fi
           uv run python -m src.evaluation.select_winner \
             --parent-run-id "$(jq -r .parent_run_id run.json)" --output-json run.json >> "$GITHUB_STEP_SUMMARY"
       - name: Evaluate on test, gate and register

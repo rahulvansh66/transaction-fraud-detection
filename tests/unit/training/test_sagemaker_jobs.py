@@ -14,11 +14,13 @@ import pytest
 from botocore.exceptions import ClientError
 
 from src.training import hpo_tuner, sagemaker_jobs
+from src.training.experiment_config import ExperimentPlan
 
-SEARCH_SPACE = {
+RANGES = {
     "max_depth": {"type": "integer", "min": 3, "max": 10},
     "gamma": {"type": "continuous", "min": 0, "max": 5},
 }
+TUNING = {"objective_type": "Maximize", "objective_metric": "validation:aucpr", "max_parallel_jobs": 2}
 TRAINING = {"instance_type": "ml.m5.xlarge", "max_run": 3600}
 
 
@@ -31,30 +33,53 @@ def _request() -> dict:
 
 
 def test_build_ranges_splits_types() -> None:
-    """Integer and continuous parameters land in separate range lists with string bounds."""
-    ranges = hpo_tuner.build_ranges(SEARCH_SPACE)
+    """Integer, continuous and categorical parameters land in separate lists; values are strings."""
+    ranges = hpo_tuner.build_ranges({"depth": [2, 5, 7]}, RANGES)
     assert ranges["IntegerParameterRanges"][0]["MinValue"] == "3"
     assert ranges["ContinuousParameterRanges"][0]["Name"] == "gamma"
+    assert ranges["CategoricalParameterRanges"] == [{"Name": "depth", "Values": ["2", "5", "7"]}]
 
 
-def test_build_ranges_rejects_bad_specs() -> None:
-    """Unknown types and inverted bounds fail loudly."""
+def test_build_ranges_omits_empty_kinds_and_rejects_unknown_type() -> None:
+    """Empty range kinds are dropped from the request and an unknown type fails loudly."""
+    assert list(hpo_tuner.build_ranges({"depth": [2, 5]}, {})) == ["CategoricalParameterRanges"]
     with pytest.raises(ValueError):
-        hpo_tuner.build_ranges({"x": {"type": "weird", "min": 0, "max": 1}})
-    with pytest.raises(ValueError):
-        hpo_tuner.build_ranges({"x": {"type": "integer", "min": 5, "max": 5}})
+        hpo_tuner.build_ranges({}, {"x": {"type": "weird", "min": 0, "max": 1}})
 
 
 def test_tuning_request_static_excludes_tunable_and_sets_parent() -> None:
     """Tunable keys are removed from static params and the MLflow parent id reaches trials."""
-    cfg = {"search_space": SEARCH_SPACE, "tuning": {
-        "strategy": "Bayesian", "objective_type": "Maximize", "objective_metric": "validation:aucpr",
-        "max_jobs": 3, "max_parallel_jobs": 2}}
-    req = hpo_tuner.build_tuning_request("hpo-x", cfg, _request(), "parent-1")
+    plan = ExperimentPlan(strategy="bayesian", fixed={"eta": 0.1}, ranges=RANGES, trials=3)
+    request = _request()
+    request["HyperParameters"]["max_depth"] = "6"
+    req = hpo_tuner.build_tuning_request("hpo-x", TUNING, plan, request, "parent-1")
     definition = req["TrainingJobDefinition"]
+    config = req["HyperParameterTuningJobConfig"]
     assert "max_depth" not in definition["StaticHyperParameters"]
     assert definition["Environment"][hpo_tuner.PARENT_RUN_ENV] == "parent-1"
-    assert re.search(hpo_tuner.METRIC_REGEX, "validation-aucpr:0.8123").group(1) == "0.8123"
+    assert config["Strategy"] == "Bayesian" and config["ResourceLimits"]["MaxNumberOfTrainingJobs"] == 3
+
+
+def test_grid_request_omits_max_training_jobs() -> None:
+    """AMT derives the Grid job count, so the request must not send MaxNumberOfTrainingJobs."""
+    plan = ExperimentPlan(strategy="grid", fixed={}, lists={"max_depth": [2, 5, 7]}, combinations=3, trials=3)
+    config = hpo_tuner.build_tuning_request("hpo-x", TUNING, plan, _request(), "p")["HyperParameterTuningJobConfig"]
+    assert config["Strategy"] == "Grid"
+    assert config["ResourceLimits"] == {"MaxParallelTrainingJobs": 2}
+    assert config["ParameterRanges"]["CategoricalParameterRanges"][0]["Values"] == ["2", "5", "7"]
+
+
+def test_random_request_sends_max_training_jobs() -> None:
+    """Random is capped by the configured budget."""
+    plan = ExperimentPlan(strategy="random", fixed={}, lists={"max_depth": [2, 5, 7]}, combinations=3, trials=2)
+    config = hpo_tuner.build_tuning_request("hpo-x", TUNING, plan, _request(), "p")["HyperParameterTuningJobConfig"]
+    assert config["Strategy"] == "Random" and config["ResourceLimits"]["MaxNumberOfTrainingJobs"] == 2
+
+
+@pytest.mark.parametrize("line,value", [("validation-aucpr:0.8123", "0.8123"), ("validation-aucpr:1e-05", "1e-05")])
+def test_metric_regex_handles_scientific_notation(line: str, value: str) -> None:
+    """The AMT objective regex captures plain and scientific-notation values."""
+    assert re.search(hpo_tuner.METRIC_REGEX, line).group(1) == value
 
 
 def test_tuning_job_name_length_limit() -> None:

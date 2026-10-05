@@ -1,5 +1,8 @@
 # Production ML Experimentation with Git, SageMaker Pipelines, Pipeline Parameters, AMT, and MLflow
 
+> **Superseded in part (2026-10):** this note describes the earlier separate manual/hpo experiment files (`manual_params`, `search_space`, `static_params`, `--kind manual|hpo`). The repo now uses one `params:` block (scalar = fixed, list = discrete values, range) with an explicit `tuning.strategy` (`grid`, `random`, `bayesian`) and `--kind experiment|production`. See `.claude/skills/ml-experimentation-workflow/SKILL.md` for the current rules. The architecture and reasoning below are kept as written.
+
+
 > **Implementation status:** [mlflow-and-reproducibility.md](mlflow-and-reproducibility.md)
 > tracks how much of this operating model is wired today and the concrete gaps
 > (tracking server, data/code/env lineage, evaluation gate, registry promotion).

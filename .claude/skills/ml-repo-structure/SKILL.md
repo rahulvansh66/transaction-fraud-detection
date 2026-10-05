@@ -32,8 +32,8 @@ ml-project/
 │   └── pipeline.py         # orchestrates the SageMaker Pipeline steps
 ├── config/
 │   ├── experiments/        # one self-contained file per experiment; number = highest + 1, never reused
-│   │   ├── experiment-002-manual-params.yaml   # mode: manual (manual_params)
-│   │   └── experiment-003-search-space.yaml    # mode: hpo (search_space + tuning)
+│   │   ├── experiment-002-manual-params.yaml   # all scalar params: single run
+│   │   └── experiment-003-search-space.yaml    # ranges + tuning.strategy: bayesian
 │   ├── production/
 │   │   └── model.yaml      # the single approved, versioned config
 │   └── env/                # per-AWS-environment values, not model config
@@ -95,7 +95,7 @@ Don't put everything into one YAML. Keep these separate:
 
 | Config | Purpose | Lives in |
 | --- | --- | --- |
-| Experiment config | One manual point (`mode: manual`) or one HPO search-space definition (`mode: hpo`); self-contained, no base/extends; naming in [[ml-experimentation-workflow]] | `config/experiments/experiment-NNN-<slug>.yaml` |
+| Experiment config | One experiment question: a single point, a grid over lists, or a search over ranges, all in one `params:` block with an explicit `tuning.strategy` when anything is tunable; self-contained, no base/extends; naming in [[ml-experimentation-workflow]] | `config/experiments/experiment-NNN-<slug>.yaml` |
 | Production config | The single approved, versioned config actually deployed | `config/production/model.yaml` |
 | Environment config | Per-AWS-environment values (bucket names, tracking URIs, role ARNs) — never model hyperparameters | `config/env/{dev,prod}.yaml` |
 | Pipeline parameters | Runtime overrides passed into a SageMaker Pipeline execution | not a file — passed at execution time (see [[ml-experimentation-workflow]]) |

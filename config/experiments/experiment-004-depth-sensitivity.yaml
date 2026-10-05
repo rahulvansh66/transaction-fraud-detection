@@ -2,13 +2,13 @@
 # Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
 # =======================================================================
 
-# Experiment 003 (Bayesian search over ranges). Keep the scalar params, runtime and data
-# identical to the baseline (experiment-002-manual-params) so metrics stay comparable.
-# Prefer wide ranges around sensible defaults over ranges narrowed from a single point.
-# Use scaling: Logarithmic for strictly positive params spanning orders of magnitude
-# (eta, lambda, alpha). Environment values (buckets, ARNs) live in config/env/.
+# Experiment 004 (grid sensitivity): impact of max_depth at 2, 5 and 7, everything else
+# held at the baseline (experiment-002-manual-params). A list plus strategy: grid runs
+# every value exactly once (3 trials). Grid supports lists only; for ranges use
+# bayesian (or random). tuning.max_jobs is optional for grid; if set it must equal the
+# number of combinations. Environment values (buckets, ARNs) live in config/env/.
 experiment:
-  name: exp-003-search-space
+  name: exp-004-depth-sensitivity
 data:
   run_id: synthetic-v0    # immutable, explicit folder under processed/ (never "latest")
 runtime:
@@ -23,12 +23,11 @@ params:
   early_stopping_rounds: 20
   seed: 42
   min_precision: 0.9       # precision floor used to pick the decision threshold on validation
-  max_depth:        {type: integer,    min: 5, max: 11}
-  min_child_weight: {type: continuous, min: 1, max: 8}
-  gamma:            {type: continuous, min: 0, max: 3}
+  min_child_weight: 3
+  gamma: 1
+  max_depth: [2, 5, 7]
 tuning:
-  strategy: bayesian
+  strategy: grid
   objective_metric: validation:aucpr
   objective_type: Maximize
-  max_jobs: 3              # raise to ~10-20 trials per tuned parameter for a real search
   max_parallel_jobs: 2

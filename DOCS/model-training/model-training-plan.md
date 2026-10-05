@@ -19,7 +19,7 @@ The rule is the same as for preprocessing: separate code by why it changes and w
 |---|---|---|
 | Pure logic | `src/training/data.py`, `model.py`; `src/evaluation/metrics.py` | No I/O, no argument parsing, no S3, no MLflow. Takes arrays or DataFrames plus params and returns arrays, a booster or a metrics dict. Unit-testable on tiny synthetic data. |
 | Orchestration | `src/training/train.py` | The only file that knows it runs as a SageMaker Training job (`SM_CHANNEL_*`, `SM_MODEL_DIR`). Parses config and hyperparameters, calls the pure functions in order, logs to MLflow, writes the model. |
-| Launcher | `src/training/run_training_job.py`, `hpo_tuner.py` | Client-side. `run_training_job.py` is the CLI entry point (`--mode local\|sagemaker`, `--kind manual\|hpo\|production`). It loads the experiment config, builds the estimator and starts a single training job, or delegates to `hpo_tuner.py` when `--kind hpo`. `hpo_tuner.py` builds the AMT tuner and is used only for HPO runs. Neither contains ML logic. |
+| Launcher | `src/training/run_training_job.py`, `hpo_tuner.py` | Client-side. `run_training_job.py` is the CLI entry point (`--mode local\|sagemaker`, `--kind experiment\|production`). It loads and validates the experiment config (`experiment_config.py`), then starts a single training job when every `params` entry is a scalar, or delegates to `hpo_tuner.py` when `params` contains lists or ranges. `hpo_tuner.py` builds the AMT request (strategy from `tuning.strategy`) and is used only for searches. Neither contains ML logic. |
 | Lineage | `src/training/lineage.py` | Dependency-free helpers, reusing `config_hash` and `build_run_id` from preprocessing. |
 | Shared | `src/config_loader`, `src/mlflow_tracking` | `load_yaml`, `load_experiment`, `merge_configs`. MLflow helpers: `start_parent_run`, `start_child_run`, `set_lineage_tags`, `log_config_artifact`, `fetch_dagshub_secret`. |
 | Evaluation | `src/evaluation/metrics.py`, `evaluate.py`, `select_winner.py` | Owns the definition of "good". `metrics.py` is the pure metric library. `select_winner.py` is a separate consumer of MLflow runs: it ranks trials on validation metrics and tags the winner. `evaluate.py` is a pipeline step that scores the winner on the test split, applies the gate and registers the candidate. |
@@ -55,8 +55,8 @@ Production rules:
 - Gate on the held-out score and also compare against the current production model on the same test data. Passing an absolute threshold is not enough if the model is worse than production.
 - Never pick a different trial because the winner scored badly on test. That turns the test set into a second validation set. If the winner fails, run a new experiment. If this happens repeatedly, get a fresh holdout.
 - Keep a human approval after the gate. Nothing is auto-promoted.
-- `run_training_job.py`: entry point called by CI and by developers. Parses `--mode` and `--kind`, loads and merges configs, launches one training job for `manual` and `production` (production reads `config/production/model.yaml` and never reruns AMT), and calls `hpo_tuner.py` for `hpo`.
-- `hpo_tuner.py`: used only by `--kind hpo`. Builds the `HyperparameterTuner` from the experiment YAML (objective `validation:aucpr`, Bayesian, `max_jobs` and `max_parallel_jobs`). Opens the MLflow parent run for the tuning job. Each trial is a child run tagged `mode=hpo`.
+- `run_training_job.py`: entry point called by CI and by developers. Parses `--mode` and `--kind`, loads and merges configs, launches one training job for all-scalar experiments and for `production` (production reads `config/production/model.yaml` and never reruns AMT), and calls `hpo_tuner.py` when the experiment has lists or ranges.
+- `hpo_tuner.py`: used only for searches. Builds the AMT tuning request from the experiment YAML: lists become categorical ranges, ranges become integer/continuous ranges, the strategy (`grid`, `random` or `bayesian`) comes from `tuning.strategy`, plus the objective `validation:aucpr`, `max_jobs` (omitted for grid, which AMT derives) and `max_parallel_jobs`. The launcher opens the MLflow parent run for the tuning job. Each trial is a child run tagged with the resolved strategy as `mode`.
 
 ## 4. Configs
 - `config/experiments/experiment-001.yaml`: tree structure (`max_depth`, `min_child_weight`, `gamma`).
@@ -65,7 +65,7 @@ Production rules:
 - Each file holds the search space, static params, the objective metric and the data `run_id` (an immutable path, never "latest").
 - `config/production/model.yaml`: a template, filled only after the winner is approved.
 - `config/env/{dev,prod}.yaml`: add a `training:` block (instance type, `max_run`, spot off). No model settings go here.
-- The experiment skill recommends a few manual points before AMT. Since three AMT experiments were requested directly, each uses modest ranges, and this is noted in the files.
+- Experiments use one `params:` block (scalar = fixed, list = discrete values, `{type, min, max}` = range) with an explicit `tuning.strategy` when anything is tunable. A single point gives no direction for narrowing ranges, so searches use modest-to-wide ranges around sensible defaults; `max_jobs: 3` stays small while the plumbing is validated.
 
 ## 5. Terraform (no manual AWS changes)
 - `cloudwatch.tf`: add `/aws/sagemaker/TrainingJobs` with explicit retention, and extend the execution role's log permissions.
@@ -75,7 +75,7 @@ Production rules:
 
 ## 6. CI/CD (`.github/workflows/`)
 - `ci.yml` on PR: ruff, unit pytest, `terraform fmt -check` and `validate`.
-- `train.yml`: `workflow_dispatch` with `experiment` and `data_run_id` inputs, plus a `schedule` for retraining. It assumes the OIDC role and runs `run_training_job.py --mode sagemaker`. `--kind hpo` for experiments. `--kind production` reads `config/production/model.yaml` and never reruns AMT.
+- `train.yml`: `workflow_dispatch` with `experiment` and `data_run_id` inputs, plus a `schedule` for retraining. It assumes the OIDC role and runs `run_training_job.py --mode sagemaker`. `--kind experiment` for experiments. `--kind production` reads `config/production/model.yaml` and never reruns AMT.
 - Winner selection runs `select_winner.py`, then `evaluate.py` scores the winner on the test split and applies the gate, and the comparison table is posted the comparison table to the job summary.
 - Hyperparameters and search bounds live only in YAML, not in workflow files. Only the OIDC role ARN and region are configured in GitHub.
 
@@ -89,7 +89,7 @@ Add `xgboost` and `scikit-learn` to `pyproject.toml` (refresh `uv.lock`) and `ru
 
 ## 9. Verification order
 1. `uv run pytest` passes.
-2. Local: generate splits with the existing local Spark job on `dataset/raw/data-v0`, then run `run_training_job.py --mode local --kind manual` against `experiment-001.yaml`. Confirm a run in DagsHub with params, metrics, model and tags.
+2. Local: generate splits with the existing local Spark job on `dataset/raw/data-v0`, then run `run_training_job.py --mode local --kind experiment` against the all-scalar `experiment-002-manual-params.yaml` (local runs are single runs only). Confirm a run in DagsHub with params, metrics, model and tags.
 3. `terraform plan` reviewed, then applied with approval.
 4. SageMaker: one training job, then the three AMT experiments. Confirm parent and child runs in DagsHub, comparable on shared metric names.
 5. `select_winner.py` prints the comparison and picks the winner, `evaluate.py` scores it on the test split and applies the gate, and the winning candidate is registered. Promotion stays a manual approval.

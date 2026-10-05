@@ -18,19 +18,19 @@ Nobody types hyperparameters into a workflow. The workflow only says *which file
 
 Each experiment is one YAML file under `config/experiments/`. Ours for the search is [experiment-003-search-space.yaml](../../config/experiments/experiment-003-search-space.yaml). Two blocks matter:
 
-- `static_params`: things we never change during the search (learning rate, seed, metric).
-- `search_space`: the ranges the tuner is allowed to explore, like `max_depth` from 5 to 11.
+- `params`: every parameter in one place. A scalar (`eta: 0.1`) is fixed, a list (`max_depth: [2, 5, 7]`) is a set of discrete values, and a `{type, min, max}` dict is a range the tuner may explore, like `max_depth` from 5 to 11.
+- `tuning`: how to search. `strategy` is always written explicitly: `grid` (every list value once, lists only), `random` or `bayesian` (needs `max_jobs`).
 
 Why a file and not a few lines in the workflow? Because git remembers. Six months later you can still open the exact ranges that were searched. It also keeps the workflow boring, which is what you want.
 
-Before this, we run a manual experiment with one fixed set of values ([experiment-002-manual-params.yaml](../../config/experiments/experiment-002-manual-params.yaml)). It tells us roughly where the good values are, so the search range isn't a blind guess. Each file gets its own number, and we never edit one after it has produced runs.
+Before this we run a baseline with all-scalar params ([experiment-002-manual-params.yaml](../../config/experiments/experiment-002-manual-params.yaml), a single training job), and optionally a grid sensitivity study such as [experiment-004-depth-sensitivity.yaml](../../config/experiments/experiment-004-depth-sensitivity.yaml) (`max_depth: [2, 5, 7]`). A single point does not tell you where to search, so prefer wide ranges around sensible defaults. Each file gets its own number, and we never edit one after it has produced runs.
 
 ## 2. The button
 
-[train.yml](../../.github/workflows/train.yml) is started manually (Actions -> train -> Run workflow). You give it three things: the experiment file, the data run id, and the kind (`manual`, `hpo` or `production`). It logs into AWS through OIDC, so there are no stored AWS keys, then calls the launcher:
+[train.yml](../../.github/workflows/train.yml) is started manually (Actions -> train -> Run workflow). You give it three things: the experiment file, the data run id, and the kind (`experiment` or `production`). It logs into AWS through OIDC, so there are no stored AWS keys, then calls the launcher:
 
 ```
-python -m src.training.run_training_job --mode sagemaker --kind hpo ...
+python -m src.training.run_training_job --mode sagemaker --kind experiment ...
 ```
 
 The data run id is a specific, frozen folder of processed data, never `latest`. If the data could change under you, two runs of the "same" experiment wouldn't be comparable. The check lives in `validate_data_run_id` ([sagemaker_jobs.py:74](../../src/training/sagemaker_jobs.py#L74)).
@@ -39,17 +39,17 @@ The data run id is a specific, frozen folder of processed data, never `latest`. 
 
 Tuning jobs cost real money, so we fail early. Two checks run before anything is submitted:
 
-- **Does the file match the kind?** [validate_experiment](../../src/training/experiment_config.py#L25) rejects an `hpo` run if the file has no `search_space`, or if the file says `mode: manual`. Without this, a typo would quietly train with default values.
+- **Is the file valid?** [validate_experiment](../../src/training/experiment_config.py) rejects unknown top-level keys (a mis-indented parameter), lists or ranges without an explicit `tuning.strategy`, `grid` over a range, a missing `max_jobs` for random/bayesian, and a grid `max_jobs` that differs from the combination count. Without this, a typo would quietly train with default values.
 - **Is the git tree clean?** On SageMaker the launcher refuses a dirty tree ([run_training_job.py:227](../../src/training/run_training_job.py#L227)), because otherwise the recorded commit wouldn't match the code that actually ran.
 
 ## 4. Handing the search to SageMaker
 
 SageMaker has a built-in tuner called AMT (Automatic Model Tuning). It picks values, runs a training job per trial, and learns from the scores to choose better values next time. Our code only translates the YAML into the request AMT wants:
 
-- [build_ranges](../../src/training/hpo_tuner.py#L26) turns each `search_space` entry into an integer or continuous range.
-- [build_tuning_request](../../src/training/hpo_tuner.py#L73) adds the budget (`max_jobs`, `max_parallel_jobs`), the metric to maximise, and the fixed values.
+- [build_ranges](../../src/training/hpo_tuner.py) turns each list into a categorical range (values as strings) and each range entry into an integer or continuous range.
+- [build_tuning_request](../../src/training/hpo_tuner.py) adds the strategy, the budget (`max_jobs`, `max_parallel_jobs`; grid omits `max_jobs` because AMT derives it), the metric to maximise, and the fixed values.
 
-The launcher submits it in the `hpo` branch of [run_sagemaker](../../src/training/run_training_job.py#L254) and waits for it to finish.
+The launcher submits it in the search branch of [run_sagemaker](../../src/training/run_training_job.py) and waits for it to finish. An all-scalar file skips AMT and submits one plain training job.
 
 A note on budget: `max_jobs: 3` in our file is only to check the plumbing works. A real search needs far more, roughly 10 to 20 trials for every parameter you tune.
 
@@ -72,8 +72,9 @@ Passing the gate only registers a *candidate*. Promoting it to production is a s
 ## Habits worth keeping
 
 - One file per experiment, never edited after it has run.
-- Search ranges come from manual results, not guesses.
-- Same data, seed and metric in the manual and search files, so the scores can be compared.
+- Wide ranges around sensible defaults; a single run gives no direction to narrow them.
+- Same data, seed and metric across a round's files, so the scores can be compared.
+- Commit before any SageMaker run so the recorded git sha is clean.
 - Never auto-promote a winner.
 - Don't re-run the search on a schedule. Once you have a good config, retrain that approved config on new data instead.
 

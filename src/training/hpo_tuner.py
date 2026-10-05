@@ -2,11 +2,12 @@
 # Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
 # =======================================================================
 
-"""Builds and submits SageMaker Automatic Model Tuning (AMT) jobs from an experiment config.
+"""Builds and submits SageMaker Automatic Model Tuning (AMT) jobs from an experiment plan.
 
-Used only for ``--kind hpo``. The search space is read from the experiment YAML, never
-hardcoded. One MLflow parent run represents the whole search; each trial's ``train.py``
-opens a child run under it (the parent id reaches the trial via ``MLFLOW_PARENT_RUN_ID``).
+Used for every experiment whose plan is not ``single``. Lists and ranges come from the
+validated experiment YAML (see ``experiment_config``), never hardcoded. One MLflow parent
+run represents the whole search; each trial's ``train.py`` opens a child run under it (the
+parent id reaches the trial via ``MLFLOW_PARENT_RUN_ID``).
 """
 
 from __future__ import annotations
@@ -14,41 +15,50 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from src.training.experiment_config import ExperimentPlan
+
 logger = logging.getLogger(__name__)
 
 PARENT_RUN_ENV = "MLFLOW_PARENT_RUN_ID"
 INTEGER_TYPE = "integer"
 CONTINUOUS_TYPE = "continuous"
-METRIC_REGEX = r"validation-aucpr:([0-9\.]+)"
+METRIC_REGEX = r"validation-aucpr:([0-9eE+\-\.]+)"
 MAX_TUNING_NAME_LEN = 32
+AMT_STRATEGIES = {"grid": "Grid", "random": "Random", "bayesian": "Bayesian"}
 
 
-def build_ranges(search_space: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, str]]]:
-    """Converts the YAML search space into AMT ``ParameterRanges``.
+def build_ranges(
+    lists: dict[str, list[Any]], ranges: dict[str, dict[str, Any]]
+) -> dict[str, list[dict[str, Any]]]:
+    """Converts validated lists and ranges into AMT ``ParameterRanges``.
 
     Args:
-        search_space: Mapping of hyperparameter name to ``{type, min, max}``
-            (``type`` is ``integer`` or ``continuous``; optional ``scaling``).
+        lists: Parameter name to its discrete values; sent as categorical ranges, with
+            values stringified because AMT requires strings (``train.py`` parses them back).
+        ranges: Parameter name to ``{type, min, max}`` (``type`` is ``integer`` or
+            ``continuous``; optional ``scaling``). Bounds are assumed already validated.
 
     Returns:
-        Dict with ``IntegerParameterRanges`` and ``ContinuousParameterRanges`` lists.
+        Dict with ``IntegerParameterRanges``, ``ContinuousParameterRanges`` and
+        ``CategoricalParameterRanges`` lists.
 
     Raises:
-        ValueError: If a parameter has an unknown type or ``min >= max``.
+        ValueError: If a range has an unknown type.
     """
-    ranges: dict[str, list[dict[str, str]]] = {"IntegerParameterRanges": [], "ContinuousParameterRanges": []}
-    for name, spec in search_space.items():
-        if spec["min"] >= spec["max"]:
-            raise ValueError(f"search_space.{name}: min must be < max")
+    out: dict[str, list[dict[str, Any]]] = {
+        "IntegerParameterRanges": [], "ContinuousParameterRanges": [], "CategoricalParameterRanges": []}
+    for name, values in lists.items():
+        out["CategoricalParameterRanges"].append({"Name": name, "Values": [str(v) for v in values]})
+    for name, spec in ranges.items():
         entry = {"Name": name, "MinValue": str(spec["min"]), "MaxValue": str(spec["max"]),
                  "ScalingType": spec.get("scaling", "Auto")}
         if spec["type"] == INTEGER_TYPE:
-            ranges["IntegerParameterRanges"].append(entry)
+            out["IntegerParameterRanges"].append(entry)
         elif spec["type"] == CONTINUOUS_TYPE:
-            ranges["ContinuousParameterRanges"].append(entry)
+            out["ContinuousParameterRanges"].append(entry)
         else:
-            raise ValueError(f"search_space.{name}: unknown type '{spec['type']}'")
-    return ranges
+            raise ValueError(f"params.{name}: unknown type '{spec['type']}'")
+    return {kind: entries for kind, entries in out.items() if entries}
 
 
 def tuning_job_name(config_hash: str, timestamp: str) -> str:
@@ -72,7 +82,8 @@ def tuning_job_name(config_hash: str, timestamp: str) -> str:
 
 def build_tuning_request(
     name: str,
-    cfg: dict[str, Any],
+    tuning: dict[str, Any],
+    plan: ExperimentPlan,
     training_request: dict[str, Any],
     parent_run_id: str,
 ) -> dict[str, Any]:
@@ -80,26 +91,29 @@ def build_tuning_request(
 
     Args:
         name: Tuning job name from :func:`tuning_job_name`.
-        cfg: Parsed experiment config (``search_space`` and ``tuning`` blocks).
+        tuning: The experiment's ``tuning`` block (objective, parallelism).
+        plan: Validated plan from ``validate_experiment``; supplies strategy, lists, ranges
+            and the trial count.
         training_request: Request from ``build_training_job_request``; its hyperparameters
             become the static ones and its channels/resources are reused for every trial.
         parent_run_id: MLflow parent run id passed to trials as an environment variable.
 
     Returns:
         Keyword arguments for ``sagemaker_client.create_hyper_parameter_tuning_job``.
+        Grid requests omit ``MaxNumberOfTrainingJobs`` because AMT derives it from the grid.
     """
-    tuning = cfg["tuning"]
-    tunable = set(cfg["search_space"])
-    static = {k: v for k, v in training_request["HyperParameters"].items() if k not in tunable}
+    static = {k: v for k, v in training_request["HyperParameters"].items() if k not in plan.tunable}
+    limits: dict[str, int] = {"MaxParallelTrainingJobs": int(tuning["max_parallel_jobs"])}
+    if plan.strategy != "grid":
+        limits["MaxNumberOfTrainingJobs"] = plan.trials
     return {
         "HyperParameterTuningJobName": name,
         "HyperParameterTuningJobConfig": {
-            "Strategy": tuning["strategy"],
+            "Strategy": AMT_STRATEGIES[plan.strategy],
             "HyperParameterTuningJobObjective": {
                 "Type": tuning["objective_type"], "MetricName": tuning["objective_metric"]},
-            "ResourceLimits": {"MaxNumberOfTrainingJobs": int(tuning["max_jobs"]),
-                               "MaxParallelTrainingJobs": int(tuning["max_parallel_jobs"])},
-            "ParameterRanges": build_ranges(cfg["search_space"]),
+            "ResourceLimits": limits,
+            "ParameterRanges": build_ranges(plan.lists, plan.ranges),
         },
         "TrainingJobDefinition": {
             "StaticHyperParameters": static,

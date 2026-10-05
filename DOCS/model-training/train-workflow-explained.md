@@ -63,7 +63,7 @@ In GitHub open **Actions**, pick **train**, click **Run workflow**. It asks for 
 |---|---|
 | `experiment` | Path of an experiment YAML, e.g. `config/experiments/experiment-001.yaml`. |
 | `data_run_id` | The exact folder name under `processed/` in S3 (never `latest`). |
-| `kind` | `manual`, `hpo` or `production` (see section 4). |
+| `kind` | `experiment` or `production` (see section 4). |
 
 ### 3.2 `schedule`: the weekly timer (currently commented out)
 
@@ -100,15 +100,14 @@ What it is: a **cron timer**. `cron: "0 3 * * 1"` means "03:00 UTC every Monday"
 
 ---
 
-## 4. The three `kind` values
+## 4. The two `kind` values
 
 | kind | Question it answers | What runs |
 |---|---|---|
-| `manual` | "What happens if I try this specific setting?" | One SageMaker training job using `manual_params` from the experiment YAML. No AMT. |
-| `hpo` | "Which settings in this range are best?" | One AMT tuning job that tries several combinations from `search_space` (for `experiment-001`: 3 trials, 2 at a time), then picks the best on validation. |
+| `experiment` | The experiment file's `params` decide. | All scalars: one SageMaker training job, no AMT. Lists with `tuning.strategy: grid`: one AMT job that runs every combination once. Ranges with `strategy: bayesian` (or `random`): one AMT job with `max_jobs` trials, then the best on validation is picked. |
 | `production` | "Retrain the model we already approved on new data." | One training job using `config/production/model.yaml`. The `experiment` input is ignored. Never runs AMT. |
 
-Rule of thumb: start with a few `manual` runs, use `hpo` once you know roughly where good values are, use `production` only after a winner is approved.
+Rule of thumb: start with a baseline (all-scalar params), use a grid to check a few chosen values, use a Bayesian search over wide ranges once you know which parameters matter, and use `production` only after a winner is approved.
 
 ---
 
@@ -163,7 +162,7 @@ Design rule: **hyperparameters never appear in this file.** It only says *which*
 Recommended first run: try one job from your laptop first, because errors there are quicker to debug than inside Actions:
 
 ```bash
-uv run python -m src.training.run_training_job --mode sagemaker --kind manual \
+uv run python -m src.training.run_training_job --mode sagemaker --kind experiment \
   --experiment config/experiments/experiment-001.yaml --data-run-id <run_id>
 ```
 

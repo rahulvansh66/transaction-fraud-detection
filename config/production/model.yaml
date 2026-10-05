@@ -2,7 +2,9 @@
 # Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
 # =======================================================================
 
-# Template: filled only after an AMT winner is approved (copy its values here).
+# Template: filled only after a search winner is approved (copy its values here).
+# Production retrains one fixed point, so every entry under params must be a scalar.
+# An empty params block is rejected at launch.
 model:
   approved_from_experiment: null
-static_params: {}
+params: {}

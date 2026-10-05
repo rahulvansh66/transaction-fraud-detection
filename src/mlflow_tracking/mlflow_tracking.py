@@ -84,7 +84,7 @@ def set_lineage_tags(
         git_sha: Commit the run was launched from (with a dirty suffix if applicable).
         config_hash: Hash of the resolved experiment config.
         data_run_id: Immutable processed run id the run read.
-        mode: One of manual, hpo, production.
+        mode: One of single, grid, random, bayesian, production.
         **extra: Additional string tags (e.g. image URI, pipeline execution ARN).
     """
     mlflow.set_tags(

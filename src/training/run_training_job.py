@@ -6,8 +6,9 @@
 
 Contains no ML logic: it resolves the experiment config, derives lineage identifiers and
 submits the work. ``--mode local`` runs ``train.py`` as a subprocess; ``--mode sagemaker``
-submits a training job (``--kind manual|production``) or a tuning job (``--kind hpo``).
-``--kind production`` reads ``config/production/model.yaml`` and never runs AMT.
+submits a training job or, when the experiment's ``params`` contain lists or ranges, a
+tuning job whose strategy comes from ``tuning.strategy``. ``--kind production`` reads
+``config/production/model.yaml`` and always trains one fixed point (never AMT).
 
 Run from the repository root: ``python -m src.training.run_training_job``.
 """
@@ -22,8 +23,13 @@ import time
 from pathlib import Path
 from typing import Any
 
-from src.config_loader.config_loader import load_env_config, load_yaml, merge_configs
-from src.training.experiment_config import validate_experiment
+from src.config_loader.config_loader import load_env_config, load_yaml
+from src.training.experiment_config import (
+    SINGLE,
+    ExperimentPlan,
+    validate_experiment,
+    validate_production,
+)
 from src.training.lineage import config_hash, current_git_sha, full_git_sha
 from src.training.sagemaker_jobs import validate_data_run_id
 
@@ -32,6 +38,7 @@ logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TRAIN_SCRIPT = "src.training.train"
 PRODUCTION_CONFIG = REPO_ROOT / "config" / "production" / "model.yaml"
+PRODUCTION_MODE = "production"
 SOURCE_PREFIX = "models/code/"
 
 
@@ -46,7 +53,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["local", "sagemaker"], default="local")
-    parser.add_argument("--kind", choices=["manual", "hpo", "production"], default="manual")
+    parser.add_argument("--kind", choices=["experiment", "production"], default="experiment")
     parser.add_argument("--experiment", type=Path, default=None,
                         help="Experiment YAML; ignored for --kind production.")
     parser.add_argument("--env", default="dev")
@@ -57,59 +64,70 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Permit a dirty git tree for SageMaker runs (smoke tests only).")
     parser.add_argument("--no-wait", action="store_true", help="Submit and return immediately.")
     parser.add_argument("--output-json", type=Path, default=None,
-                        help="Write {run_id} (manual/production) or {parent_run_id} (hpo) for later steps.")
+                        help="Write {run_id} (single/production) or {parent_run_id} (search) for later steps.")
     return parser.parse_args(argv)
 
 
-def resolve_config(kind: str, experiment: Path | None) -> dict[str, Any]:
-    """Loads the config that defines this run.
+def resolve_config(kind: str, experiment: Path | None) -> tuple[dict[str, Any], ExperimentPlan]:
+    """Loads and validates the config that defines this run.
 
     Args:
-        kind: ``manual``, ``hpo`` or ``production``.
+        kind: ``experiment`` or ``production``.
         experiment: Experiment YAML path (required unless ``kind == "production"``).
 
     Returns:
-        Parsed config. For ``production`` the approved ``config/production/model.yaml``
-        is layered over the ``data``/``runtime`` defaults of the experiment if given.
+        Tuple ``(config, plan)``. For ``production`` the approved ``config/production/model.yaml``
+        replaces ``params`` and is layered over the ``data``/``runtime`` defaults of the
+        experiment if given; the plan is always a single run of its scalar params.
 
     Raises:
-        SystemExit: If no experiment is given for a non-production kind.
-        ValueError: If the experiment file does not match ``kind`` (see
+        SystemExit: If no experiment is given for the ``experiment`` kind.
+        ValueError: If the config is invalid (see
             :func:`src.training.experiment_config.validate_experiment`).
     """
     if kind == "production":
         base = load_yaml(experiment) if experiment else {}
-        return merge_configs(base, load_yaml(PRODUCTION_CONFIG))
+        production = load_yaml(PRODUCTION_CONFIG)
+        cfg = {**{k: v for k, v in base.items() if k not in ("params", "tuning")}, **production}
+        return cfg, ExperimentPlan(strategy=SINGLE, fixed=validate_production(cfg))
     if experiment is None:
-        raise SystemExit("--experiment is required for --kind manual and hpo.")
+        raise SystemExit("--experiment is required for --kind experiment.")
     cfg = load_yaml(experiment)
-    validate_experiment(cfg, kind)
-    return cfg
+    return cfg, validate_experiment(cfg)
 
 
-def build_hyperparameters(cfg: dict[str, Any], kind: str) -> dict[str, Any]:
-    """Selects the hyperparameters passed to ``train.py``.
+def run_mode(kind: str, plan: ExperimentPlan) -> str:
+    """Returns the lineage ``mode`` tag for a run.
 
     Args:
-        cfg: Parsed config.
-        kind: ``manual``, ``hpo`` or ``production``.
+        kind: ``experiment`` or ``production``.
+        plan: The resolved plan.
 
     Returns:
-        Static params, plus ``manual_params`` for manual/production runs. HPO passes only
-        static params because AMT generates the tunable values.
+        ``production`` for production runs, else the plan strategy
+        (``single``, ``grid``, ``random`` or ``bayesian``).
     """
-    hp = dict(cfg.get("static_params", {}))
-    if kind != "hpo":
-        hp.update(cfg.get("manual_params", {}))
-    return hp
+    return PRODUCTION_MODE if kind == "production" else plan.strategy
 
 
-def build_control_args(cfg: dict[str, Any], kind: str, env: str, git_sha: str, data_run_id: str) -> dict[str, str]:
+def build_hyperparameters(plan: ExperimentPlan) -> dict[str, Any]:
+    """Selects the hyperparameters passed to ``train.py`` by the launcher.
+
+    Args:
+        plan: The resolved plan.
+
+    Returns:
+        The fixed (scalar) params. Lists and ranges are supplied per trial by AMT.
+    """
+    return dict(plan.fixed)
+
+
+def build_control_args(cfg: dict[str, Any], mode: str, env: str, git_sha: str, data_run_id: str) -> dict[str, str]:
     """Builds the non-hyperparameter arguments ``train.py`` expects.
 
     Args:
         cfg: Parsed config.
-        kind: ``manual``, ``hpo`` or ``production``.
+        mode: Lineage mode from :func:`run_mode`.
         env: Environment name.
         git_sha: Code version to tag.
         data_run_id: Immutable data run identifier.
@@ -117,7 +135,7 @@ def build_control_args(cfg: dict[str, Any], kind: str, env: str, git_sha: str, d
     Returns:
         Mapping of CLI option (without ``--``) to value.
     """
-    control = {"env": env, "mode": kind, "git-sha": git_sha, "data-run-id": data_run_id,
+    control = {"env": env, "mode": mode, "git-sha": git_sha, "data-run-id": data_run_id,
                "config-hash": config_hash(cfg)}
     version = cfg.get("runtime", {}).get("xgboost_version")
     if version:
@@ -128,13 +146,14 @@ def build_control_args(cfg: dict[str, Any], kind: str, env: str, git_sha: str, d
     return control
 
 
-def build_train_args(cfg: dict[str, Any], kind: str, data_dir: Path, data_run_id: str,
+def build_train_args(cfg: dict[str, Any], plan: ExperimentPlan, mode: str, data_dir: Path, data_run_id: str,
                      env: str, git_sha: str) -> list[str]:
     """Builds the ``train.py`` argument list for a local run.
 
     Args:
         cfg: Parsed config.
-        kind: ``manual``, ``hpo`` or ``production``.
+        plan: The resolved (single) plan.
+        mode: Lineage mode from :func:`run_mode`.
         data_dir: Directory holding ``train/``, ``val/`` and ``metadata.json``.
         data_run_id: Immutable data run identifier.
         env: Environment name.
@@ -144,30 +163,36 @@ def build_train_args(cfg: dict[str, Any], kind: str, data_dir: Path, data_run_id
         CLI arguments for ``train.py``.
     """
     args = ["--train-dir", str(data_dir / "train"), "--val-dir", str(data_dir / "val")]
-    for key, value in build_control_args(cfg, kind, env, git_sha, data_run_id).items():
+    for key, value in build_control_args(cfg, mode, env, git_sha, data_run_id).items():
         args += [f"--{key}", value]
-    for key, value in build_hyperparameters(cfg, kind).items():
+    for key, value in build_hyperparameters(plan).items():
         args += [f"--{key}", str(value)]
     return args
 
 
-def run_local(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: str, git_sha: str) -> None:
+def run_local(cfg: dict[str, Any], plan: ExperimentPlan, args: argparse.Namespace, data_run_id: str,
+              git_sha: str) -> None:
     """Runs ``train.py`` as a subprocess on local Parquet splits.
 
     Args:
         cfg: Parsed config.
+        plan: The resolved plan; only ``single`` runs are supported locally.
         args: Launcher arguments.
         data_run_id: Immutable data run identifier.
         git_sha: Code version to tag.
 
     Raises:
+        SystemExit: If the plan is a search (lists or ranges); use ``--mode sagemaker``.
         FileNotFoundError: If the processed data directory does not exist.
         subprocess.CalledProcessError: If the training subprocess fails.
     """
+    if plan.strategy != SINGLE:
+        raise SystemExit(f"--mode local supports single runs only; this experiment is a {plan.strategy} search "
+                         "(use --mode sagemaker, or make params all scalars).")
     data_dir = args.data_dir or REPO_ROOT / "dataset" / "processed" / data_run_id
     if not data_dir.is_dir():
         raise FileNotFoundError(f"processed data not found: {data_dir}")
-    train_args = build_train_args(cfg, args.kind, data_dir, data_run_id, args.env, git_sha)
+    train_args = build_train_args(cfg, plan, run_mode(args.kind, plan), data_dir, data_run_id, args.env, git_sha)
     # MLflow prints an emoji on run end, which crashes cp1252 consoles on Windows
     env = {**os.environ, "PYTHONUTF8": "1"}
     subprocess.run([sys.executable, "-m", TRAIN_SCRIPT, *train_args], cwd=REPO_ROOT, check=True, env=env)
@@ -203,11 +228,13 @@ def write_output(path: Path | None, payload: dict[str, Any]) -> None:
         path.write_text(json.dumps(payload), encoding="utf-8")
 
 
-def run_sagemaker(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: str, git_sha: str) -> None:
+def run_sagemaker(cfg: dict[str, Any], plan: ExperimentPlan, args: argparse.Namespace, data_run_id: str,
+                  git_sha: str) -> None:
     """Submits a SageMaker training job or an AMT tuning job.
 
     Args:
         cfg: Parsed config.
+        plan: The resolved plan; ``single`` submits one training job, anything else an AMT job.
         args: Launcher arguments.
         data_run_id: Immutable data run identifier.
         git_sha: Code version to tag (must be clean unless ``--allow-dirty``).
@@ -233,9 +260,10 @@ def run_sagemaker(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: st
 
     source_uri = sagemaker_jobs.stage_source(session.client("s3"), bucket, SOURCE_PREFIX,
                                              sagemaker_jobs.build_source_tar())
-    hp = {**build_hyperparameters(cfg, args.kind), **build_control_args(cfg, args.kind, args.env, git_sha, data_run_id)}
+    mode = run_mode(args.kind, plan)
+    hp = {**build_hyperparameters(plan), **build_control_args(cfg, mode, args.env, git_sha, data_run_id)}
     stamp = time.strftime("%m%d%H%M%S")
-    name = f"fraud-{args.kind}-{config_hash(cfg)[:8]}-{stamp}"
+    name = f"fraud-{mode}-{config_hash(cfg)[:8]}-{stamp}"
     environment = {"TRAINING_IMAGE_URI": image_uri, "TRAINING_JOB_NAME": name,
                    "TRAINING_IMAGE_DIGEST": sagemaker_jobs.resolve_image_digest(
                        session.client("ecr"), image_uri),
@@ -251,19 +279,20 @@ def run_sagemaker(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: st
     )
     client = session.client("sagemaker")
 
-    if args.kind == "hpo":
+    if plan.strategy != SINGLE:
         configure_mlflow_tracking(args.env)
         tuning_name = hpo_tuner.tuning_job_name(config_hash(cfg), stamp)
         with mlflow.start_run(run_name=tuning_name) as parent:
-            mlflow.set_tags({"mode": "hpo", "experiment_name": cfg["experiment"]["name"],
+            mlflow.set_tags({"mode": mode, "experiment_name": cfg["experiment"]["name"],
                              "git_sha": git_sha, "config_hash": config_hash(cfg),
                              "data_run_id": data_run_id, "tuning_job_name": tuning_name,
                              "env": args.env, "git_sha_full": environment["GIT_SHA_FULL"],
                              "source_uri": source_uri,
                              "image_digest": environment["TRAINING_IMAGE_DIGEST"]})
             client.create_hyper_parameter_tuning_job(
-                **hpo_tuner.build_tuning_request(tuning_name, cfg, request, parent.info.run_id))
-            logger.info("step=launch status=submitted kind=hpo tuning_job=%s parent_run_id=%s",
+                **hpo_tuner.build_tuning_request(tuning_name, cfg["tuning"], plan, request, parent.info.run_id))
+            logger.info("step=launch status=submitted mode=%s strategy=%s combinations=%d trials=%d "
+                        "tuning_job=%s parent_run_id=%s", mode, plan.strategy, plan.combinations, plan.trials,
                         tuning_name, parent.info.run_id)
         if not args.no_wait:
             status = wait_for_tuning(client, tuning_name)
@@ -274,7 +303,7 @@ def run_sagemaker(cfg: dict[str, Any], args: argparse.Namespace, data_run_id: st
         return
 
     client.create_training_job(**request)
-    logger.info("step=launch status=submitted kind=%s training_job=%s image=%s", args.kind, name, image_uri)
+    logger.info("step=launch status=submitted mode=%s training_job=%s image=%s", mode, name, image_uri)
     if not args.no_wait:
         client.get_waiter("training_job_completed_or_stopped").wait(TrainingJobName=name)
         status = client.describe_training_job(TrainingJobName=name)["TrainingJobStatus"]
@@ -299,15 +328,15 @@ def main(argv: list[str] | None = None) -> None:
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     args = parse_args(argv)
-    cfg = resolve_config(args.kind, args.experiment)
+    cfg, plan = resolve_config(args.kind, args.experiment)
     data_run_id = validate_data_run_id(args.data_run_id or cfg["data"]["run_id"])
     git_sha = current_git_sha()
-    logger.info("step=launch status=start mode=%s kind=%s data_run_id=%s git_sha=%s",
-                args.mode, args.kind, data_run_id, git_sha)
+    logger.info("step=launch status=start mode=%s kind=%s strategy=%s data_run_id=%s git_sha=%s",
+                args.mode, args.kind, plan.strategy, data_run_id, git_sha)
     if args.mode == "local":
-        run_local(cfg, args, data_run_id, git_sha)
+        run_local(cfg, plan, args, data_run_id, git_sha)
     else:
-        run_sagemaker(cfg, args, data_run_id, git_sha)
+        run_sagemaker(cfg, plan, args, data_run_id, git_sha)
 
 
 if __name__ == "__main__":
