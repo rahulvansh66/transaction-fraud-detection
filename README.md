@@ -24,7 +24,7 @@ uv run jupyter nbconvert --to notebook --execute notebooks/<name>.ipynb --output
 
 ## How to run a training job
 
-Hyperparameters and search ranges live in `config/experiments/*.yaml`, never in code or workflows. Training reads an immutable processed data run (`processed/<run_id>/{train,val,test}` plus `metadata.json`), never `latest`.
+Hyperparameters and search ranges live in `config/experiments/*.yaml`, never in code or workflows. Each file has its own number and is self-contained and serves one kind: `experiment-002-manual-params.yaml` (`mode: manual`) holds one fixed point, and the next number, `experiment-003-search-space.yaml` (`mode: hpo`), holds the AMT ranges derived from it. The `mode` must match `--kind`, which is checked before any job is submitted. Never edit a file after it has produced runs; start the next number instead. Training reads an immutable processed data run (`processed/<run_id>/{train,val,test}` plus `metadata.json`), never `latest`.
 
 ### 1. Prerequisites
 - `uv sync`, and a `.env` with the DagsHub credentials (see `.env.example`) for local runs.
@@ -35,7 +35,7 @@ Hyperparameters and search ranges live in `config/experiments/*.yaml`, never in 
 ```bash
 uv run python scripts/make_synthetic_splits.py   # optional: synthetic-v0 test data
 uv run python -m src.training.run_training_job --mode local --kind manual \
-  --experiment config/experiments/experiment-001.yaml
+  --experiment config/experiments/experiment-002-manual-params.yaml
 ```
 Runs `train.py` as a subprocess and logs a run to DagsHub MLflow. The same seed reproduces the same metrics.
 
@@ -44,11 +44,11 @@ The git tree must be clean (or pass `--allow-dirty`).
 ```bash
 # One training job
 uv run python -m src.training.run_training_job --mode sagemaker --kind manual \
-  --experiment config/experiments/experiment-001.yaml --data-run-id <run_id>
+  --experiment config/experiments/experiment-002-manual-params.yaml --data-run-id <run_id>
 
 # Hyperparameter search (AMT); uses tuning.max_jobs / max_parallel_jobs from the YAML
 uv run python -m src.training.run_training_job --mode sagemaker --kind hpo \
-  --experiment config/experiments/experiment-001.yaml --data-run-id <run_id>
+  --experiment config/experiments/experiment-003-search-space.yaml --data-run-id <run_id>
 ```
 Add `--no-wait` to submit and return, and `--output-json run.json` to save the MLflow run id for the next steps. Logs go to CloudWatch `/aws/sagemaker/TrainingJobs`.
 

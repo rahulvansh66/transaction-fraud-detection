@@ -25,9 +25,10 @@ final evaluation → MLflow Model Registry → approval → production.
 
 ## Deciding manual vs. HPO
 
-Use **manual** (a new `config/experiments/experiment-NNN.yaml`, run via
-Pipeline Parameters, no AMT) when the question is a deliberate, discrete
-comparison an engineer should reason about directly:
+Use **manual** (a new `config/experiments/experiment-NNN-<slug>.yaml` with
+`mode: manual`, run via `--kind manual`, no AMT) when the question is a
+deliberate, discrete point or comparison an engineer should reason about
+directly (a single fixed point is also a valid baseline or smoke test):
 
 ```
 optimizer = Adam        vs  optimizer = AdamW
@@ -46,6 +47,43 @@ Stage 1 (manual): lr=.001 → .72, lr=.0005 → .76, lr=.0001 → .71
 Stage 2 (AMT):    lr ∈ [.0003, .002], batch ∈ {32,64,128}, dropout ∈ [0,.2]
                   → 30 trials → best = .80
 ```
+
+## Experiment file convention (manual stage, then search stage)
+
+**Experiment numbers are globally sequential and never reused: every file under
+`config/experiments/` gets the next unused number, whatever its mode.** A manual
+file and the search-space file derived from it are two experiments with
+consecutive numbers, never two files sharing one number. Before creating a file,
+list `config/experiments/` and take highest number + 1.
+
+```
+config/experiments/
+  experiment-002-manual-params.yaml   # mode: manual, carries manual_params (one fixed point)
+  experiment-003-search-space.yaml    # mode: hpo, carries search_space + tuning, ranges
+                                      #   informed by the manual result
+```
+
+- **Filename = number + stage slug; `experiment.name` = `exp-NNN-<slug>`**, and
+  `experiment.mode` (`manual` | `hpo`) must match the `--kind` it is launched
+  with. `experiment.name` is tagged on every MLflow run as `experiment_name`, so
+  manual runs and AMT trials stay separable. A search-space file's header comment
+  names the manual experiment its ranges follow.
+- **Files are self-contained**: no `_base.yaml` or `extends`. Each carries its own
+  `data`, `runtime` and `static_params`. When copying a file to start a new one,
+  diff against the previous so `seed`, `eval_metric` and `data.run_id` only
+  change on purpose; keep them identical between a round's manual and search files.
+- **A file carries only the block its mode needs**: manual -> `manual_params`;
+  hpo -> `search_space` + `tuning` (`objective_metric`, `objective_type`,
+  `strategy`, `max_jobs`, `max_parallel_jobs`). Keys must not repeat `static_params`.
+  `src/training/experiment_config.py::validate_experiment` enforces this before any
+  job is submitted.
+- **One manual file = one point.** To try another point or iterate on ranges, start
+  the next number (`experiment-003-...`); never edit a file after it has produced runs.
+- **Derive ranges from evidence**: centre each range on what the manual runs showed
+  to be good, with margin; use `scaling: Logarithmic` for strictly positive
+  parameters spanning orders of magnitude (`eta`, `lambda`, `alpha`); drop
+  parameters shown to be flat; include the manual best inside the range. Budget
+  roughly 10-20 trials per tuned parameter for a real Bayesian search.
 
 The responsibility split, always:
 

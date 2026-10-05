@@ -66,7 +66,10 @@ instead of stitching together unrelated runs.
 
 Tag every run with a `mode` of `manual`, `hpo`, or `production` — this is how
 you distinguish a deliberate one-off experiment from an AMT trial from a
-scheduled retrain later, without relying on naming conventions.
+scheduled retrain later, without relying on naming conventions. Also tag
+`experiment_name` (the `experiment.name` from the experiment YAML, e.g.
+`exp-002-manual-params`) on every run and on the HPO parent run, so manual runs
+and the AMT search they informed stay separable and traceable.
 
 For an AMT search specifically: each trial should be its own child run under
 the tuning job's parent run, carrying the trial's generated hyperparameters —

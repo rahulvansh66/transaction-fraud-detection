@@ -31,8 +31,9 @@ ml-project/
 │   │   └── config_loader.py
 │   └── pipeline.py         # orchestrates the SageMaker Pipeline steps
 ├── config/
-│   ├── experiments/        # one file per manual or HPO experiment
-│   │   └── experiment-NNN.yaml
+│   ├── experiments/        # one self-contained file per experiment; number = highest + 1, never reused
+│   │   ├── experiment-002-manual-params.yaml   # mode: manual (manual_params)
+│   │   └── experiment-003-search-space.yaml    # mode: hpo (search_space + tuning)
 │   ├── production/
 │   │   └── model.yaml      # the single approved, versioned config
 │   └── env/                # per-AWS-environment values, not model config
@@ -94,7 +95,7 @@ Don't put everything into one YAML. Keep these separate:
 
 | Config | Purpose | Lives in |
 | --- | --- | --- |
-| Experiment config | One manual run or one HPO search-space definition | `config/experiments/*.yaml` |
+| Experiment config | One manual point (`mode: manual`) or one HPO search-space definition (`mode: hpo`); self-contained, no base/extends; naming in [[ml-experimentation-workflow]] | `config/experiments/experiment-NNN-<slug>.yaml` |
 | Production config | The single approved, versioned config actually deployed | `config/production/model.yaml` |
 | Environment config | Per-AWS-environment values (bucket names, tracking URIs, role ARNs) — never model hyperparameters | `config/env/{dev,prod}.yaml` |
 | Pipeline parameters | Runtime overrides passed into a SageMaker Pipeline execution | not a file — passed at execution time (see [[ml-experimentation-workflow]]) |
@@ -123,7 +124,7 @@ different files:
   environment config.
 
 Concretely: an HPO run in the dev AWS account still reads
-`config/experiments/experiment-014.yaml` + `config/env/dev.yaml`. A
+`config/experiments/experiment-014-search-space.yaml` + `config/env/dev.yaml`. A
 scheduled prod retrain reads `config/production/model.yaml` +
 `config/env/prod.yaml`. Never bake environment values (bucket names,
 tracking URIs, role ARNs) into an experiment or production config, and never
