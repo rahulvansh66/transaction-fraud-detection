@@ -320,7 +320,7 @@ def main() -> None:
 
     processor = build_processor(boto_session, env, proc, bucket)
     processor.run(
-        submit_app=str(SPARK_JOB_FILE),
+        submit_app=SPARK_JOB_FILE.as_uri(),  # file:// URI: SDK misparses "F:\\" drive letters as a URL scheme
         inputs=[
             s3_input("deps", f"s3://{bucket}/{deps_key}", DEPS_LOCAL_PATH),
             s3_input("config", f"s3://{bucket}/{config_key}", CONFIG_LOCAL_PATH),
