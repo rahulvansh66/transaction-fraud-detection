@@ -34,6 +34,7 @@ env:
   KIND: ${{ inputs.kind || 'production' }}
   EXPERIMENT: ${{ inputs.experiment || 'config/experiments/experiment-001.yaml' }}
   DATA_RUN_ID: ${{ inputs.data_run_id || vars.PRODUCTION_DATA_RUN_ID }}
+  MLFLOW_TRACKING_URI: ${{ vars.MLFLOW_TRACKING_URI }}
 
 jobs:
   train:

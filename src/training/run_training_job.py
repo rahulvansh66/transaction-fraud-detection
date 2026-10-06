@@ -268,7 +268,9 @@ def run_sagemaker(cfg: dict[str, Any], plan: ExperimentPlan, args: argparse.Name
                    "TRAINING_IMAGE_DIGEST": sagemaker_jobs.resolve_image_digest(
                        session.client("ecr"), image_uri),
                    "TRAINING_SOURCE_URI": source_uri, "GIT_SHA_FULL": full_git_sha(),
-                   "DAGSHUB_SECRET_ID": f"fraud-detection/{args.env}/dagshub-mlflow"}
+                   "DAGSHUB_SECRET_ID": f"fraud-detection/{args.env}/dagshub-mlflow",
+                   "AWS_ACCOUNT_ID": env_cfg["aws"]["account_id"],
+                   "MLFLOW_TRACKING_URI": env_cfg["mlflow"]["tracking_uri"]}
     request = sagemaker_jobs.build_training_job_request(
         job_name=name, image_uri=image_uri,
         role_arn=env_cfg["aws"]["iam_roles"]["sagemaker_execution_role_arn"],
