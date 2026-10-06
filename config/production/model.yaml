@@ -2,9 +2,28 @@
 # Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
 # =======================================================================
 
-# Template: filled only after a search winner is approved (copy its values here).
-# Production retrains one fixed point, so every entry under params must be a scalar.
-# An empty params block is rejected at launch.
+# Approved production configuration: retrained with `--kind production` on newly approved
+# data, never re-searched. Every entry under params must be a scalar (a list or range is
+# rejected at launch). Values are the validation-selected winner of exp-004-depth-sensitivity,
+# registered as fraud-detector version 3 and given the `production` alias on 2026-10-05.
+# Winner: MLflow run 4e0d6fc8ac1c407e9f63bed31d9942ee (max_depth=2, validation aucpr 0.8616,
+# test aucpr 0.8127). scale_pos_weight is computed by preprocessing, so it is not set here.
 model:
-  approved_from_experiment: null
-params: {}
+  approved_from_experiment: exp-004-depth-sensitivity
+  approved_run_id: 4e0d6fc8ac1c407e9f63bed31d9942ee
+  registered_model_version: 3
+runtime:
+  xgboost_version: "1.7.4"          # must equal the container's XGBoost; train.py fails on mismatch
+  sagemaker_framework_version: "1.7-1"
+params:
+  objective: binary:logistic
+  eval_metric: aucpr
+  tree_method: hist
+  eta: 0.1
+  num_round: 200
+  early_stopping_rounds: 20
+  seed: 42
+  min_precision: 0.9       # precision floor used to pick the decision threshold on validation
+  min_child_weight: 3
+  gamma: 1
+  max_depth: 2
