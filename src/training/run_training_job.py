@@ -256,6 +256,7 @@ def run_sagemaker(cfg: dict[str, Any], plan: ExperimentPlan, args: argparse.Name
     env_cfg = load_env_config(args.env, config_dir=REPO_ROOT / "config" / "env")
     region, bucket = env_cfg["aws"]["region"], env_cfg["aws"]["data_bucket"]
     session = boto3.Session(region_name=region)
+    sagemaker_jobs.assert_processed_run_complete(session.client("s3"), bucket, data_run_id)
     image_uri = image_uris.retrieve("xgboost", region=region, version=cfg["runtime"]["sagemaker_framework_version"])
 
     source_uri = sagemaker_jobs.stage_source(session.client("s3"), bucket, SOURCE_PREFIX,

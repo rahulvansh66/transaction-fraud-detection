@@ -9,6 +9,7 @@ import io
 import re
 import tarfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 from botocore.exceptions import ClientError
@@ -159,3 +160,54 @@ def test_train_never_reads_test_split() -> None:
     """train.py must not reference the test split (test scoring belongs to evaluate.py)."""
     source = Path(sagemaker_jobs.REPO_ROOT, "src/training/train.py").read_text(encoding="utf-8")
     assert not re.search(r"['\"/]test['\"/]|test_dir|SM_CHANNEL_TEST", source)
+
+
+class _FakeS3:
+    """S3 stand-in holding a set of object keys."""
+
+    def __init__(self, keys: set[str]) -> None:
+        """Stores the keys that exist.
+
+        Args:
+            keys: Object keys present in the fake bucket.
+        """
+        self.keys = keys
+
+    def head_object(self, Bucket: str, Key: str) -> dict[str, Any]:
+        """Returns for an existing key, raises ``ClientError`` otherwise.
+
+        Args:
+            Bucket: Bucket name (ignored).
+            Key: Object key.
+
+        Returns:
+            Empty dict when the key exists.
+        """
+        if Key not in self.keys:
+            raise ClientError({"Error": {"Code": "404"}}, "HeadObject")
+        return {}
+
+    def list_objects_v2(self, Bucket: str, Prefix: str, MaxKeys: int) -> dict[str, int]:
+        """Counts keys under a prefix.
+
+        Args:
+            Bucket: Bucket name (ignored).
+            Prefix: Key prefix.
+            MaxKeys: Ignored.
+
+        Returns:
+            ``{"KeyCount": n}``.
+        """
+        return {"KeyCount": sum(k.startswith(Prefix) for k in self.keys)}
+
+
+def test_processed_run_complete_passes_with_all_parts() -> None:
+    """A run with metadata plus both splits is accepted."""
+    keys = {"processed/r1/metadata.json", "processed/r1/train/p.parquet", "processed/r1/val/p.parquet"}
+    sagemaker_jobs.assert_processed_run_complete(_FakeS3(keys), "b", "r1")
+
+
+def test_processed_run_incomplete_names_what_is_missing() -> None:
+    """A partial run (config only, no splits) fails and names the absent parts."""
+    with pytest.raises(FileNotFoundError, match=r"metadata\.json, train/, val/"):
+        sagemaker_jobs.assert_processed_run_complete(_FakeS3({"processed/r1/config/x.yaml"}), "b", "r1")

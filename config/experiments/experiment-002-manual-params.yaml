@@ -11,7 +11,7 @@
 experiment:
   name: exp-002-manual-params
 data:
-  run_id: synthetic-v0    # immutable, explicit folder under processed/ (never "latest")
+  run_id: f31148e-744cfb52d4c1-data-v0    # immutable preprocessing run: <git_sha>-<config_hash>-<data_version> (never "latest")
 runtime:
   xgboost_version: "1.7.4"          # must equal the container's XGBoost; train.py fails on mismatch
   sagemaker_framework_version: "1.7-1"

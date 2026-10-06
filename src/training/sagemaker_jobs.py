@@ -179,6 +179,38 @@ def script_mode_hyperparameters(source_uri: str, region: str, hp: dict[str, Any]
     return {**base, **{k: str(v) for k, v in hp.items()}}
 
 
+def assert_processed_run_complete(s3_client: Any, bucket: str, data_run_id: str) -> None:
+    """Fails fast if ``processed/<run_id>/`` is missing, partial or never finished.
+
+    Checked before any training or tuning job is submitted, so a typo or an interrupted
+    preprocessing run is an immediate readable error instead of a failed SageMaker job
+    (or, worse, an AMT search whose trials all fail).
+
+    Args:
+        s3_client: A boto3 S3 client.
+        bucket: Data bucket.
+        data_run_id: Validated processed run id.
+
+    Raises:
+        FileNotFoundError: If ``metadata.json`` or the ``train/`` or ``val/`` split is absent.
+    """
+    base = f"processed/{validate_data_run_id(data_run_id)}"
+    missing: list[str] = []
+    try:
+        s3_client.head_object(Bucket=bucket, Key=f"{base}/metadata.json")
+    except ClientError:
+        missing.append("metadata.json")
+    for split in ("train", "val"):
+        listing = s3_client.list_objects_v2(Bucket=bucket, Prefix=f"{base}/{split}/", MaxKeys=1)
+        if not listing.get("KeyCount"):
+            missing.append(f"{split}/")
+    if missing:
+        raise FileNotFoundError(
+            f"s3://{bucket}/{base}/ is incomplete, missing: {', '.join(missing)}; "
+            "check data.run_id or re-run preprocessing")
+    logger.info("step=launch status=data_run_verified data_run_id=%s", data_run_id)
+
+
 def data_channels(bucket: str, data_run_id: str) -> list[dict[str, Any]]:
     """Builds the train, val and metadata input channels for an immutable run id.
 
