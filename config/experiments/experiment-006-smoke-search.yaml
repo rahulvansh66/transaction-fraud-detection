@@ -1,0 +1,33 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
+# Experiment 006 (smoke, Bayesian search): the cheap plumbing counterpart of experiment-003-search-space.
+# Same ranges, but num_round/early_stopping_rounds cut to the CLAUDE.md smoke budget and 3 trials.
+# Not for model selection; never copy these values into config/production/model.yaml.
+# Environment values (buckets, ARNs) live in config/env/.
+experiment:
+  name: exp-006-smoke-search
+data:
+  run_id: synthetic-v0    # immutable, explicit folder under processed/ (never "latest")
+runtime:
+  xgboost_version: "1.7.4"          # must equal the container's XGBoost; train.py fails on mismatch
+  sagemaker_framework_version: "1.7-1"
+params:
+  objective: binary:logistic
+  eval_metric: aucpr
+  tree_method: hist
+  eta: 0.1
+  num_round: 20
+  early_stopping_rounds: 5
+  seed: 42
+  min_precision: 0.9       # precision floor used to pick the decision threshold on validation
+  max_depth:        {type: integer,    min: 5, max: 11}
+  min_child_weight: {type: continuous, min: 1, max: 8}
+  gamma:            {type: continuous, min: 0, max: 3}
+tuning:
+  strategy: bayesian
+  objective_metric: validation:aucpr
+  objective_type: Maximize
+  max_jobs: 3
+  max_parallel_jobs: 2
