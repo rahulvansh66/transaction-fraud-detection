@@ -10,6 +10,32 @@ CloudWatch log groups, VPC/networking, etc.). Define and change infrastructure
 through Terraform config only — never create or modify AWS resources manually
 via the console, ad-hoc CLI commands, or one-off scripts.
 
+## Local-only folders
+
+`.tmp/` and `.ref/` are local scratch and reference folders, not part of the project. Read from them only
+when explicitly asked or referenced, and never mention, cite, or document them as a source anywhere in the codebase
+(code, docstrings, comments, docs, configs, or notebooks).
+
+## Development-phase compute budget
+
+Until the user says we are now working on the full dataset, we use a small smoke dataset
+and keep every SageMaker job as cheap as possible. Rows barely affect cost (startup time
+dominates), so the savings come from running fewer jobs and shorter training:
+
+- **Minimal parameters** for smoke experiments:
+
+  | Purpose | `num_round` | `early_stopping_rounds` |
+  |---|---|---|
+  | Pure plumbing smoke test | 10-20 | 5 |
+  | Slightly meaningful | 30-50 | 10 |
+
+  Never copy smoke values into `config/production/model.yaml`.
+- **Keep HPO at 3 trials** (`tuning.max_jobs`, or 3 grid combinations).
+- **One SageMaker run per stage**, not frequent repeats. Test code and config changes
+  locally first (`--mode local`, unit tests). Launch a SageMaker job only after a batch of
+  meaningful changes that genuinely need a container run, and ask the user before launching
+  one.
+
 ## Code style
 
 Write code that is structured, modular, scalable, and maintainable. Use comments
