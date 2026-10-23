@@ -7,7 +7,7 @@
 import pytest
 
 from src.evaluation.evaluate import apply_gate
-from src.evaluation.select_winner import comparison_table, pick_best
+from src.evaluation.select_winner import comparison_table, pick_best, varying_params
 
 GATE = {"min_aucpr": 0.5, "min_recall": 0.3, "no_worse_than_production": True}
 
@@ -35,6 +35,18 @@ def test_comparison_table_is_ranked() -> None:
     """The first data row is the best trial."""
     table = comparison_table([_run("lowlowlow", 0.1), _run("highhighh", 0.9)], "validation_aucpr")
     assert table.splitlines()[2].startswith("| highhigh")
+
+
+def test_comparison_table_shows_recall_and_only_varying_params() -> None:
+    """Columns are the params that differ between trials, plus validation recall."""
+    runs = [{"run_id": "aaaaaaaa1", "metrics": {"validation_aucpr": 0.7, "validation_recall": 0.5},
+             "params": {"max_depth": "2", "eta": "0.1", "best_iteration": "10"}},
+            {"run_id": "bbbbbbbb2", "metrics": {"validation_aucpr": 0.9},
+             "params": {"max_depth": "5", "eta": "0.1", "best_iteration": "30"}}]
+    assert varying_params(runs) == ["max_depth"]
+    lines = comparison_table(runs, "validation_aucpr").splitlines()
+    assert lines[0] == "| run_id | validation_aucpr | validation_recall | max_depth |"
+    assert lines[2] == "| bbbbbbbb | 0.9000 |  | 5 |" and lines[3] == "| aaaaaaaa | 0.7000 | 0.5000 | 2 |"
 
 
 def test_gate_absolute_and_relative_checks() -> None:

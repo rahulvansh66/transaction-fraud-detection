@@ -9,7 +9,7 @@
 # TODO: pointing at the same DagsHub repo/experiment namespace as dev for now.
 # Revisit once a separate prod tracking server or DagsHub project is provisioned.
 mlflow:
-  tracking_uri: "https://dagshub.com/<user>/<repo>.mlflow"
+  tracking_uri: "${MLFLOW_TRACKING_URI}"
   experiment_name: "transaction-fraud-detection-prod"
 
 # TODO: the roles below are the *-dev-* roles reused as a placeholder — only

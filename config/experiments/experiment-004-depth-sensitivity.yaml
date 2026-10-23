@@ -1,0 +1,33 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
+# Experiment 004 (grid sensitivity): impact of max_depth at 2, 5 and 7, everything else
+# held at the baseline (experiment-002-manual-params). A list plus strategy: grid runs
+# every value exactly once (3 trials). Grid supports lists only; for ranges use
+# bayesian (or random). tuning.max_jobs is optional for grid; if set it must equal the
+# number of combinations. Environment values (buckets, ARNs) live in config/env/.
+experiment:
+  name: exp-004-depth-sensitivity
+data:
+  run_id: synthetic-v0    # immutable, explicit folder under processed/ (never "latest")
+runtime:
+  xgboost_version: "1.7.4"          # must equal the container's XGBoost; train.py fails on mismatch
+  sagemaker_framework_version: "1.7-1"
+params:
+  objective: binary:logistic
+  eval_metric: aucpr
+  tree_method: hist
+  eta: 0.1
+  num_round: 200
+  early_stopping_rounds: 20
+  seed: 42
+  min_precision: 0.9       # precision floor used to pick the decision threshold on validation
+  min_child_weight: 3
+  gamma: 1
+  max_depth: [2, 5, 7]
+tuning:
+  strategy: grid
+  objective_metric: validation:aucpr
+  objective_type: Maximize
+  max_parallel_jobs: 2

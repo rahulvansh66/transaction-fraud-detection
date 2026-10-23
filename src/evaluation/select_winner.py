@@ -24,7 +24,22 @@ from src.mlflow_tracking.mlflow_tracking import configure_mlflow_tracking
 logger = logging.getLogger(__name__)
 
 DEFAULT_METRIC = "validation_aucpr"
-TABLE_PARAMS = ("max_depth", "min_child_weight", "gamma")
+RECALL_METRIC = "validation_recall"
+NON_TUNABLE_PARAMS = frozenset({"best_iteration"})
+
+
+def varying_params(runs: list[dict[str, Any]]) -> list[str]:
+    """Lists the parameters whose value differs between trials (what the search actually varied).
+
+    Args:
+        runs: Dicts with ``params``.
+
+    Returns:
+        Sorted parameter names with more than one distinct value, excluding values
+        ``train.py`` derives per run (such as ``best_iteration``).
+    """
+    names = {name for r in runs for name in r["params"]} - NON_TUNABLE_PARAMS
+    return sorted(n for n in names if len({r["params"].get(n) for r in runs}) > 1)
 
 
 def pick_best(runs: list[dict[str, Any]], metric: str) -> dict[str, Any]:
@@ -59,11 +74,14 @@ def comparison_table(runs: list[dict[str, Any]], metric: str, top: int = 10) -> 
         Markdown table text.
     """
     ranked = sorted((r for r in runs if metric in r["metrics"]), key=lambda r: -r["metrics"][metric])[:top]
-    lines = [f"| run_id | {metric} | " + " | ".join(TABLE_PARAMS) + " |",
-             "|---|---|" + "---|" * len(TABLE_PARAMS)]
+    columns = varying_params(runs)
+    lines = [f"| run_id | {metric} | {RECALL_METRIC} | " + " | ".join(columns) + " |",
+             "|---|---|---|" + "---|" * len(columns)]
     for r in ranked:
-        params = " | ".join(str(r["params"].get(p, "")) for p in TABLE_PARAMS)
-        lines.append(f"| {r['run_id'][:8]} | {r['metrics'][metric]:.4f} | {params} |")
+        recall = r["metrics"].get(RECALL_METRIC)
+        recall_text = "" if recall is None else f"{recall:.4f}"
+        params = " | ".join(str(r["params"].get(p, "")) for p in columns)
+        lines.append(f"| {r['run_id'][:8]} | {r['metrics'][metric]:.4f} | {recall_text} | {params} |")
     return "\n".join(lines)
 
 

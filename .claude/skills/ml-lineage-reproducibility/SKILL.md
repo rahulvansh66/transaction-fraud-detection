@@ -5,9 +5,9 @@ description: Checklist for making a training/pipeline run traceable and reproduc
 
 # ML lineage and reproducibility
 
-Source: [DOCS/ok/mlflow-and-reproducibility.md](../../../DOCS/ok/mlflow-and-reproducibility.md)
+Source: [DOCS/my-notes/mlflow-and-reproducibility.md](../../../DOCS/my-notes/mlflow-and-reproducibility.md)
 (current gaps, kept up to date there) and
-[DOCS/ok/production_ml_experimentation_git_sagemaker_amt_mlflow.md](../../../DOCS/ok/production_ml_experimentation_git_sagemaker_amt_mlflow.md)
+[DOCS/my-notes/production_ml_experimentation_git_sagemaker_amt_mlflow.md](../../../DOCS/my-notes/production_ml_experimentation_git_sagemaker_amt_mlflow.md)
 §15–16 (the target lineage model). This skill is the checklist version —
 check the source doc for current wiring status before assuming something is
 already done.
@@ -64,9 +64,13 @@ This is what lets you go from "this model in the registry" to "the exact
 data-quality outcome, class balance, and split boundaries" in one place,
 instead of stitching together unrelated runs.
 
-Tag every run with a `mode` of `manual`, `hpo`, or `production` — this is how
+Tag every run with a `mode` of `single`, `grid`, `random`, `bayesian` or `production` (the resolved
+strategy) — this is how
 you distinguish a deliberate one-off experiment from an AMT trial from a
-scheduled retrain later, without relying on naming conventions.
+scheduled retrain later, without relying on naming conventions. Also tag
+`experiment_name` (the `experiment.name` from the experiment YAML, e.g.
+`exp-002-manual-params`) on every run and on the search parent run, so single runs
+and the AMT searches that followed them stay separable and traceable.
 
 For an AMT search specifically: each trial should be its own child run under
 the tuning job's parent run, carrying the trial's generated hyperparameters —
@@ -79,7 +83,7 @@ This repo has not yet settled whether **MLflow Model Registry** or
 (`None → Staging → Production`). Don't silently pick one while implementing
 something else — if you're wiring registration/promotion logic, treat this
 as a decision to surface, not to make implicitly. Check
-[DOCS/ok/mlflow-and-reproducibility.md](../../../DOCS/ok/mlflow-and-reproducibility.md)
+[DOCS/my-notes/mlflow-and-reproducibility.md](../../../DOCS/my-notes/mlflow-and-reproducibility.md)
 §4 for the current state before proceeding.
 
 ## Where to look next

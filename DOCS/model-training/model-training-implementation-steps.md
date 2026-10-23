@@ -28,7 +28,7 @@ Each step has: **Goal**, **Concept**, **Files**, **Snippet**, **Done when**.
 preprocessing output (immutable processed/<run_id>/{train,val,test})
         |
         v
-train.py  (manual run  OR  AMT trials)      <- logs to MLflow, uses train + val only
+train.py  (single run  OR  AMT trials)      <- logs to MLflow, uses train + val only
         |
         v
 select_winner.py   ranks trials on VALIDATION metrics, tags the winner
@@ -41,13 +41,16 @@ evaluate.py        scores the winner ONCE on TEST, applies the gate
 register candidate in MLflow Model Registry -> manual approval -> production
 ```
 
-### Three modes (from the experimentation-workflow skill)
+### How a run is chosen (from the experimentation-workflow skill)
 
-- `manual`: a deliberate, specific comparison you reason about.
-- `hpo`: AMT searches a space you already narrowed with manual runs.
+The `params` block of an experiment file decides, and `--kind` is only `experiment` or `production`:
+
+- all scalars: one training job (`mode=single`), no AMT.
+- lists with `tuning.strategy: grid`: AMT runs every combination once (`mode=grid`).
+- ranges (and/or lists) with `strategy: bayesian` or `random`: AMT search limited by `max_jobs`.
 - `production`: retrain the *already approved* config on new data. Never reruns AMT.
 
-Every MLflow run is tagged `mode=manual|hpo|production`.
+Every MLflow run is tagged `mode=single|grid|random|bayesian|production`.
 
 ---
 
@@ -93,29 +96,28 @@ Run `uv sync` to refresh the lock file.
 # config/experiments/experiment-001.yaml
 experiment:
   name: exp-001-tree-structure
-  mode: hpo
 data:
   run_id: 2026-09-01T10-00-00_ab12cd     # immutable, explicit
-static_params:
-  objective: binary:logistic
+params:
+  objective: binary:logistic             # scalar = fixed
   eval_metric: aucpr
   eta: 0.1
   seed: 42
-search_space:
-  max_depth:        {type: integer,     min: 3,   max: 10}
+  max_depth:        {type: integer,     min: 3,   max: 10}   # range
   min_child_weight: {type: continuous,  min: 1,   max: 10}
   gamma:            {type: continuous,  min: 0,   max: 5}
+  # a list such as max_depth: [2, 5, 7] means discrete values (use strategy: grid)
 tuning:
+  strategy: bayesian     # always explicit: grid (lists only) | random | bayesian
   objective_metric: validation:aucpr
   objective_type: Maximize
-  strategy: Bayesian
   max_jobs: 3            # small on purpose while we validate 001 end to end
   max_parallel_jobs: 2
 ```
 
-**Current scope:** For now we run only `experiment-001.yaml`. Experiments 002 and 003 are added later, when we need to train further (for example to tune regularisation or boosting speed on top of the 001 winner). Raise `max_jobs` once the 001 plumbing is confirmed.
+**Current scope:** For now we run only `experiment-001.yaml`. Experiments 002 (all-scalar baseline), 003 (Bayesian ranges) and 004 (grid over `max_depth: [2, 5, 7]`) now exist in the new schema. Raise `max_jobs` once the 001 plumbing is confirmed.
 
-**Note on the experiment skill:** it recommends a few manual runs before AMT. Since we go straight to three AMT experiments, keep the ranges modest, and say so in a comment at the top of each file. Once a winner is approved, copy its values into `config/production/model.yaml`. 
+**Note on ranges:** one baseline point gives no direction, so prefer ranges around sensible defaults over ranges narrowed from a single run, and say so in a comment at the top of each file. Once a winner is approved, copy its values into `config/production/model.yaml`. 
 
 **Done when:** The three files load with `load_yaml` and contain no environment values (bucket names, ARNs, tracking URIs).
 
@@ -271,10 +273,10 @@ Log at the start of the run: job name, git SHA, data run_id, e.g. `logger.info("
 # 1. make small splits with the existing local Spark job
 # 2. train
 uv run python -m src.training.run_training_job \
-  --mode local --kind manual --experiment config/experiments/experiment-001.yaml
+  --mode local --kind experiment --experiment config/experiments/experiment-002-manual-params.yaml
 ```
 
-Check in DagsHub: the run exists, `mode=manual`, git SHA and config hash tags are set, params and metrics are present, the model has a signature.
+Check in DagsHub: the run exists, `mode=single`, git SHA and config hash tags are set, params and metrics are present, the model has a signature.
 
 **Done when:** A run appears in DagsHub with all lineage fields, and re-running with the same seed reproduces the metrics.
 
@@ -339,7 +341,7 @@ Look at the logs in CloudWatch (`/aws/sagemaker/TrainingJobs`) and the run in Da
 
 **Concept:** A `HyperparameterTuner` wraps the estimator. You give it ranges and an objective metric. It launches trials (2 at a time here), learns from the finished ones and picks the next values. AMT finds the objective by regex over the container's log lines.
 
-**Files:** `src/training/hpo_tuner.py` (used only when `--kind hpo`)
+**Files:** `src/training/hpo_tuner.py` (used only when `params` has lists or ranges)
 
 ```python
 from sagemaker.tuner import HyperparameterTuner, IntegerParameter, ContinuousParameter
@@ -350,16 +352,16 @@ tuner = HyperparameterTuner(
     objective_type="Maximize",
     metric_definitions=[{"Name": "validation:aucpr",
                          "Regex": r"validation-aucpr:([0-9\.]+)"}],
-    hyperparameter_ranges=build_ranges(cfg["search_space"]),  # from the YAML
-    strategy="Bayesian",
-    max_jobs=cfg["tuning"]["max_jobs"],
+    hyperparameter_ranges=build_ranges(plan.lists, plan.ranges),  # from the YAML params
+    strategy=cfg["tuning"]["strategy"],      # grid | random | bayesian, explicit
+    max_jobs=cfg["tuning"]["max_jobs"],      # omitted for grid: AMT derives it
     max_parallel_jobs=cfg["tuning"]["max_parallel_jobs"],
 )
 tuner.fit({"train": train_uri, "val": val_uri}, wait=False)
 ```
 
 MLflow structure:
-- `hpo_tuner.py` opens the **parent run** (tag `mode=hpo`, tuning job name).
+- The launcher opens the **parent run** (tag `mode` = resolved strategy, tuning job name).
 - Each trial's `train.py` opens a **child run** carrying that trial's generated hyperparameters. The parent run id reaches the trial as an environment variable.
 
 Run experiments 001, 002, 003 in turn. Start with a small `max_jobs` (for example 4) to confirm plumbing, then the real value.
@@ -448,7 +450,7 @@ on:
     inputs:
       experiment: {description: "config/experiments file", required: true}
       data_run_id: {description: "immutable processed/<run_id>", required: true}
-      kind: {type: choice, options: [hpo, production], default: hpo}
+      kind: {type: choice, options: [experiment, production], default: experiment}
   schedule:
     - cron: "0 3 * * 1"          # weekly retrain, production kind only
 permissions: {id-token: write, contents: read}
@@ -474,7 +476,7 @@ Notes:
 - `--kind production` reads `config/production/model.yaml` and never reruns AMT.
 - The scheduled run trains the approved config on new data. It does not search.
 - CI targets `dev` only until prod bucket and role ARNs exist.
-- The `select_winner` step only applies to `hpo`; skip it for `production`.
+- The `select_winner` step only applies to searches (`run.json` has `parent_run_id`); it is skipped for single runs and `production`.
 
 **Done when:** A PR runs `ci.yml` green, and a manual `train.yml` dispatch starts a SageMaker job and posts the comparison table to the job summary.
 
@@ -484,7 +486,7 @@ Notes:
 
 ### Order of checks
 1. `uv run pytest` and `ruff` pass.
-2. Local manual run appears in DagsHub with full lineage.
+2. Local single run appears in DagsHub with full lineage.
 3. `terraform plan` reviewed, `apply` after approval.
 4. One SageMaker training job matches the local metrics.
 5. Three AMT experiments show parent and child runs.

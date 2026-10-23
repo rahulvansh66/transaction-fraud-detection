@@ -10,8 +10,20 @@ which describe the target operating model.
 
 ## 1. What "minimal MLflow wiring" means today
 
-The only MLflow code is `_log_mlflow()` in
-[src/model_build/training/train.py](../src/model_build/training/train.py):
+> **Update 2026-10-05.** The paragraphs below describe the original minimal hook and are
+> kept for history. Current wiring: [src/training/train.py](../../src/training/train.py)
+> logs the full booster params, train/val metrics, lineage tags (git SHA short + full,
+> config hash, data run id, env, mode, image URI + digest, source bundle URI, train/val
+> data SHA-256), `resolved_config.json`, `features.json`, `data_metadata.json`,
+> `pip_freeze.txt` and a signed model; [src/evaluation/evaluate.py](../../src/evaluation/evaluate.py)
+> adds test metrics and the gate (scored with the logged `best_iteration`); HPO trials are
+> child runs. The training container's `requirements.txt` is exactly pinned and CI uses
+> `uv sync --locked`. The preprocessing launcher stages a raw-input manifest (key, size,
+> ETag) at `processed/<run_id>/config/raw_manifest.json`. Still open: bucket-level
+> overwrite protection (versioning / deny policy on the legacy-owned bucket) and
+> `PipelineExecutionArn` (no SageMaker Pipeline yet).
+
+The original hook was `_log_mlflow()` in `src/model_build/training/train.py`:
 
 - runs **only in the training step** (nothing in the Glue job or the Processing step)
 - logs **5 params** — `max_depth`, `num_round`, `eta`, `scale_pos_weight`, `n_features`
@@ -21,7 +33,7 @@ The only MLflow code is `_log_mlflow()` in
   tracking-server outage never fails training
 - uses default experiment / run naming; no tags, no run linking, no registry call
 
-It is a **safe hook**, not lifecycle integration.
+It was a **safe hook**, not lifecycle integration.
 
 ## 2. Why it is minimal
 

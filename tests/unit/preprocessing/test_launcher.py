@@ -43,6 +43,51 @@ class _FakeS3:
             raise ClientError({"Error": {"Code": self.code, "Message": "x"}}, "PutObject")
 
 
+class _ListingS3:
+    """S3 stub that serves a fixed ``list_objects_v2`` page and records ``put_object`` calls."""
+
+    def __init__(self, objects: list[dict]) -> None:
+        """Stores the objects to list.
+
+        Args:
+            objects: Entries shaped like ``list_objects_v2`` ``Contents`` items.
+        """
+        self.objects, self.puts = objects, []
+
+    def get_paginator(self, name: str) -> "_ListingS3":
+        """Returns itself as the paginator."""
+        return self
+
+    def paginate(self, **kwargs: object) -> list[dict]:
+        """Returns one page with the stored objects."""
+        return [{"Contents": self.objects}]
+
+    def put_object(self, **kwargs: object) -> None:
+        """Records the upload."""
+        self.puts.append(kwargs)
+
+
+def test_raw_manifest_is_sorted_and_stable() -> None:
+    """The manifest lists each raw object by key with size and ETag, independent of listing order."""
+    a = {"Key": "raw/v0/day=0/a.parquet", "Size": 10, "ETag": '"e1"'}
+    b = {"Key": "raw/v0/day=1/b.parquet", "Size": 20, "ETag": '"e2"'}
+    folder = {"Key": "raw/v0/day=1/", "Size": 0, "ETag": '"x"'}
+    first = launcher.build_raw_manifest(_ListingS3([b, folder, a]), "bkt", "raw/v0/")
+    assert [o["key"] for o in first["objects"]] == [a["Key"], b["Key"]]
+    assert first["object_count"] == 2 and first["total_bytes"] == 30 and first["objects"][0]["etag"] == "e1"
+    assert first == launcher.build_raw_manifest(_ListingS3([a, b]), "bkt", "raw/v0/")
+
+
+def test_raw_manifest_rejects_empty_prefix_and_is_staged_immutably() -> None:
+    """An empty raw prefix aborts the launch; staging uses the write-once helper and returns a hash."""
+    with pytest.raises(SystemExit):
+        launcher.build_raw_manifest(_ListingS3([]), "bkt", "raw/v0/")
+    s3 = _ListingS3([])
+    digest = launcher.stage_raw_manifest(s3, "bkt", "processed/r1/", {"objects": []})
+    assert len(digest) == 12
+    assert s3.puts[0]["Key"] == "processed/r1/config/raw_manifest.json" and s3.puts[0]["IfNoneMatch"] == "*"
+
+
 def test_put_immutable_refuses_existing_key() -> None:
     """A failed conditional write becomes a clean SystemExit; other errors propagate."""
     launcher.put_immutable(_FakeS3(None), "b", "k", b"x")

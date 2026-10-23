@@ -11,7 +11,8 @@ import pandas as pd
 import xgboost as xgb
 
 from src.evaluation.metrics import compute_metrics
-from src.training.data import load_split
+from src.training.data import directory_digest, load_split
+from src.training.experiment_config import ExperimentPlan
 from src.training.model import build_params, fit
 from src.training.run_training_job import build_train_args
 from src.training.train import coerce, parse_args
@@ -42,8 +43,8 @@ def test_build_params_overrides_and_weight() -> None:
 
 def test_parse_args_collects_hyperparameters() -> None:
     """Unknown --key value pairs become typed hyperparameters."""
-    args, hp = parse_args(["--mode", "hpo", "--max_depth", "5", "--eta", "0.2", "--objective", "binary:logistic"])
-    assert args.mode == "hpo"
+    args, hp = parse_args(["--mode", "bayesian", "--max_depth", "5", "--eta", "0.2", "--objective", "binary:logistic"])
+    assert args.mode == "bayesian"
     assert hp == {"max_depth": 5, "eta": 0.2, "objective": "binary:logistic"}
     assert coerce("3") == 3 and coerce("x") == "x"
 
@@ -66,10 +67,27 @@ def test_load_split_selects_columns(tmp_path: Path) -> None:
     assert list(xs.columns) == ["a", "b"] and len(ys) == 10
 
 
+def test_directory_digest_tracks_bytes_and_names(tmp_path: Path) -> None:
+    """The digest is stable for identical files and changes with content or file name."""
+    x, y = synthetic(10)
+    frame = pd.concat([x, pd.Series(y, name="isFraud")], axis=1)
+    first, second = tmp_path / "a", tmp_path / "b"
+    for folder in (first, second):
+        folder.mkdir()
+        frame.to_parquet(folder / "part-0.parquet")
+    assert directory_digest(first) == directory_digest(second)
+    frame.assign(a=frame["a"] + 1).to_parquet(second / "part-0.parquet")
+    assert directory_digest(first) != directory_digest(second)
+    before = directory_digest(first)
+    (first / "part-0.parquet").rename(first / "part-1.parquet")
+    assert directory_digest(first) != before
+
+
 def test_launcher_args_carry_lineage(tmp_path: Path) -> None:
     """The launcher passes data ids, mode and config hash to train.py."""
-    cfg = {"static_params": {"seed": 7}, "manual_params": {"max_depth": 4}}
-    args = build_train_args(cfg, "manual", tmp_path, "run-1", "dev", "abc")
+    cfg = {"params": {"seed": 7, "max_depth": 4}}
+    plan = ExperimentPlan(strategy="single", fixed=cfg["params"])
+    args = build_train_args(cfg, plan, "single", tmp_path, "run-1", "dev", "abc")
     assert args[args.index("--data-run-id") + 1] == "run-1"
     assert args[args.index("--max_depth") + 1] == "4"
     assert "--config-hash" in args

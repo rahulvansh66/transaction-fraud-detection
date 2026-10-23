@@ -5,8 +5,8 @@ description: Defines where code, configs, docker, infra, and CI files belong in 
 
 # ML repo structure
 
-Source: [DOCS/ok/production_ml_experimentation_git_sagemaker_amt_mlflow.md](../../../DOCS/ok/production_ml_experimentation_git_sagemaker_amt_mlflow.md)
-(§4, §16.1) and [DOCS/ok/best of his repo and our hpo approach.md](../../../DOCS/ok/best%20of%20his%20repo%20and%20our%20hpo%20approach.md)
+Source: [DOCS/my-notes/production_ml_experimentation_git_sagemaker_amt_mlflow.md](../../../DOCS/my-notes/production_ml_experimentation_git_sagemaker_amt_mlflow.md)
+(§4, §16.1) and [DOCS/my-notes/best of his repo and our hpo approach.md](../../../DOCS/my-notes/best%20of%20his%20repo%20and%20our%20hpo%20approach.md)
 (§13–15). Read those for the full architecture; this skill just enforces the
 structural rules day to day.
 
@@ -31,8 +31,9 @@ ml-project/
 │   │   └── config_loader.py
 │   └── pipeline.py         # orchestrates the SageMaker Pipeline steps
 ├── config/
-│   ├── experiments/        # one file per manual or HPO experiment
-│   │   └── experiment-NNN.yaml
+│   ├── experiments/        # one self-contained file per experiment; number = highest + 1, never reused
+│   │   ├── experiment-002-manual-params.yaml   # all scalar params: single run
+│   │   └── experiment-003-search-space.yaml    # ranges + tuning.strategy: bayesian
 │   ├── production/
 │   │   └── model.yaml      # the single approved, versioned config
 │   └── env/                # per-AWS-environment values, not model config
@@ -94,7 +95,7 @@ Don't put everything into one YAML. Keep these separate:
 
 | Config | Purpose | Lives in |
 | --- | --- | --- |
-| Experiment config | One manual run or one HPO search-space definition | `config/experiments/*.yaml` |
+| Experiment config | One experiment question: a single point, a grid over lists, or a search over ranges, all in one `params:` block with an explicit `tuning.strategy` when anything is tunable; self-contained, no base/extends; naming in [[ml-experimentation-workflow]] | `config/experiments/experiment-NNN-<slug>.yaml` |
 | Production config | The single approved, versioned config actually deployed | `config/production/model.yaml` |
 | Environment config | Per-AWS-environment values (bucket names, tracking URIs, role ARNs) — never model hyperparameters | `config/env/{dev,prod}.yaml` |
 | Pipeline parameters | Runtime overrides passed into a SageMaker Pipeline execution | not a file — passed at execution time (see [[ml-experimentation-workflow]]) |
@@ -123,7 +124,7 @@ different files:
   environment config.
 
 Concretely: an HPO run in the dev AWS account still reads
-`config/experiments/experiment-014.yaml` + `config/env/dev.yaml`. A
+`config/experiments/experiment-014-search-space.yaml` + `config/env/dev.yaml`. A
 scheduled prod retrain reads `config/production/model.yaml` +
 `config/env/prod.yaml`. Never bake environment values (bucket names,
 tracking URIs, role ARNs) into an experiment or production config, and never

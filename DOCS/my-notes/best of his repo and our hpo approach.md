@@ -1,5 +1,8 @@
 # Production MLOps Architecture: SageMaker, AMT, MLflow, Git, and GitHub Actions
 
+> **Superseded in part (2026-10):** this note describes the earlier separate manual/hpo experiment files (`manual_params`, `search_space`, `static_params`, `--kind manual|hpo`). The repo now uses one `params:` block (scalar = fixed, list = discrete values, range) with an explicit `tuning.strategy` (`grid`, `random`, `bayesian`) and `--kind experiment|production`. See `.claude/skills/ml-experimentation-workflow/SKILL.md` for the current rules. The architecture and reasoning below are kept as written.
+
+
 ## Executive Recommendation
 
 After comparing the existing production experimentation architecture (DOCS\production_ml_experimentation_git_sagemaker_amt_mlflow.md) with Sofian Hamiti's `amazon-sagemaker-github-actions-mlflow` repository (git repo: https://github.com/sofianhamiti/amazon-sagemaker-github-actions-mlflow , blog: https://medium.com/data-science/5-simple-steps-to-mlops-with-github-actions-mlflow-and-sagemaker-pipelines-19abf951a70) , the recommended approach is a **hybrid**:

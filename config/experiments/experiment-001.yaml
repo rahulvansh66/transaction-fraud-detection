@@ -2,17 +2,18 @@
 # Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
 # =======================================================================
 
-# Experiment 001: tree structure. Modest ranges because we go straight to AMT
-# without prior manual runs. Environment values (buckets, ARNs) live in config/env/.
+# Experiment 001: tree structure. Modest ranges because we go straight to a search
+# without prior runs. Environment values (buckets, ARNs) live in config/env/.
+# Each params entry's shape sets its role: scalar = fixed, list = discrete values,
+# {type, min, max} = range. tuning.strategy states how lists/ranges are searched.
 experiment:
   name: exp-001-tree-structure
-  mode: hpo
 data:
   run_id: synthetic-v0    # immutable, explicit folder under processed/ (never "latest")
 runtime:
   xgboost_version: "1.7.4"          # must equal the container's XGBoost; train.py fails on mismatch
   sagemaker_framework_version: "1.7-1"
-static_params:
+params:
   objective: binary:logistic
   eval_metric: aucpr
   tree_method: hist
@@ -21,18 +22,12 @@ static_params:
   early_stopping_rounds: 20
   seed: 42
   min_precision: 0.9       # precision floor used to pick the decision threshold on validation
-# Fixed values used by `--kind manual`; AMT ignores this block.
-manual_params:
-  max_depth: 6
-  min_child_weight: 1
-  gamma: 0
-search_space:
   max_depth:        {type: integer,    min: 3, max: 10}
   min_child_weight: {type: continuous, min: 1, max: 10}
   gamma:            {type: continuous, min: 0, max: 5}
 tuning:
+  strategy: bayesian
   objective_metric: validation:aucpr
   objective_type: Maximize
-  strategy: Bayesian
   max_jobs: 3              # small on purpose while we validate 001 end to end
   max_parallel_jobs: 2

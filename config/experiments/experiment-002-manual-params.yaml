@@ -1,0 +1,29 @@
+# =======================================================================
+# Rahul's AI Lab · Fraud Detection · Production-grade ML pipelines on AWS
+# =======================================================================
+
+# Experiment 002 (single run): every param is a scalar, so this is one training job and
+# carries no tuning block. Use it as the baseline other experiments are compared against.
+# One file = one question; to try another point, copy this to the next experiment number
+# instead of editing it after it has run. Self-contained on purpose: when copying, diff
+# against the previous file so seed, eval_metric and data.run_id only change deliberately.
+# Environment values (buckets, ARNs) live in config/env/.
+experiment:
+  name: exp-002-manual-params
+data:
+  run_id: synthetic-v0    # immutable, explicit folder under processed/ (never "latest")
+runtime:
+  xgboost_version: "1.7.4"          # must equal the container's XGBoost; train.py fails on mismatch
+  sagemaker_framework_version: "1.7-1"
+params:
+  objective: binary:logistic
+  eval_metric: aucpr
+  tree_method: hist
+  eta: 0.1
+  num_round: 200
+  early_stopping_rounds: 20
+  seed: 42
+  min_precision: 0.9       # precision floor used to pick the decision threshold on validation
+  max_depth: 8
+  min_child_weight: 3
+  gamma: 1

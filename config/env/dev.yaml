@@ -6,11 +6,11 @@
 # talks to. Never put model hyperparameters here — see config/experiments/ and
 # config/production/ for those.
 mlflow:
-  tracking_uri: "https://dagshub.com/<user>/<repo>.mlflow"
+  tracking_uri: "${MLFLOW_TRACKING_URI}"
   experiment_name: "transaction-fraud-detection-dev"
 
-# IAM roles provisioned in the fraud-detection dev AWS account (${AWS_ACCOUNT_ID},
-# us-east-1). These are reused as-is for this project; if they ever need to
+# IAM roles provisioned in the fraud-detection dev AWS account (id from
+# AWS_ACCOUNT_ID, us-east-1). These are reused as-is for this project; if they ever need to
 # change, update them via Terraform, not manually in the console.
 aws:
   region: "us-east-1"

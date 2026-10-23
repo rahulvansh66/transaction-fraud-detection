@@ -16,11 +16,12 @@ import gzip
 import hashlib
 import io
 import logging
+import re
 import tarfile
 from pathlib import Path
 from typing import Any
 
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,40 @@ ENTRY_POINT_SOURCE = "from src.training.train import main\n\nif __name__ == \"__
 FIXED_MTIME = 0
 PRECONDITION_ERROR_CODES = frozenset({"PreconditionFailed", "ConditionalRequestConflict"})
 FORBIDDEN_RUN_IDS = frozenset({"", "latest", "current"})
+UNRESOLVED_DIGEST = "unresolved"
+ECR_IMAGE_URI = re.compile(
+    r"^(?P<account>\d+)\.dkr\.ecr\.[\w-]+\.amazonaws\.com/(?P<repo>[^:@]+):(?P<tag>[^@]+)$"
+)
+
+
+def resolve_image_digest(ecr_client: Any, image_uri: str) -> str:
+    """Resolves a tagged ECR image URI to its immutable content digest.
+
+    Tags such as ``1.7-1`` can be re-pushed, so the digest is what actually pins the
+    environment. Best-effort: lineage must not block a launch, so any failure (a URI that
+    is not a tagged ECR image, or missing ``ecr:BatchGetImage`` on the AWS-owned repo)
+    is logged and returns a sentinel instead of raising.
+
+    Args:
+        ecr_client: A boto3 ECR client for the image's region.
+        image_uri: Tagged ECR image URI from ``image_uris.retrieve``.
+
+    Returns:
+        The ``sha256:...`` digest, or :data:`UNRESOLVED_DIGEST`.
+    """
+    match = ECR_IMAGE_URI.match(image_uri)
+    if not match:
+        logger.warning("step=launch status=image_digest_skipped reason=not_a_tagged_ecr_uri uri=%s", image_uri)
+        return UNRESOLVED_DIGEST
+    try:
+        response = ecr_client.batch_get_image(
+            registryId=match["account"], repositoryName=match["repo"],
+            imageIds=[{"imageTag": match["tag"]}],
+        )
+        return response["images"][0]["imageId"]["imageDigest"]
+    except (ClientError, BotoCoreError, KeyError, IndexError):
+        logger.warning("step=launch status=image_digest_unresolved uri=%s", image_uri, exc_info=True)
+        return UNRESOLVED_DIGEST
 
 
 def validate_data_run_id(run_id: str) -> str:
@@ -142,6 +177,38 @@ def script_mode_hyperparameters(source_uri: str, region: str, hp: dict[str, Any]
         "sagemaker_region": region,
     }
     return {**base, **{k: str(v) for k, v in hp.items()}}
+
+
+def assert_processed_run_complete(s3_client: Any, bucket: str, data_run_id: str) -> None:
+    """Fails fast if ``processed/<run_id>/`` is missing, partial or never finished.
+
+    Checked before any training or tuning job is submitted, so a typo or an interrupted
+    preprocessing run is an immediate readable error instead of a failed SageMaker job
+    (or, worse, an AMT search whose trials all fail).
+
+    Args:
+        s3_client: A boto3 S3 client.
+        bucket: Data bucket.
+        data_run_id: Validated processed run id.
+
+    Raises:
+        FileNotFoundError: If ``metadata.json`` or the ``train/`` or ``val/`` split is absent.
+    """
+    base = f"processed/{validate_data_run_id(data_run_id)}"
+    missing: list[str] = []
+    try:
+        s3_client.head_object(Bucket=bucket, Key=f"{base}/metadata.json")
+    except ClientError:
+        missing.append("metadata.json")
+    for split in ("train", "val"):
+        listing = s3_client.list_objects_v2(Bucket=bucket, Prefix=f"{base}/{split}/", MaxKeys=1)
+        if not listing.get("KeyCount"):
+            missing.append(f"{split}/")
+    if missing:
+        raise FileNotFoundError(
+            f"s3://{bucket}/{base}/ is incomplete, missing: {', '.join(missing)}; "
+            "check data.run_id or re-run preprocessing")
+    logger.info("step=launch status=data_run_verified data_run_id=%s", data_run_id)
 
 
 def data_channels(bucket: str, data_run_id: str) -> list[dict[str, Any]]:
